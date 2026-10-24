@@ -133,7 +133,16 @@ app.whenReady().then(async () => {
     okG('B/插入任务列表', () => actAt('', 0, 'ins:todo').includes('- [ ]'), () => JSON.stringify(actAt('', 0, 'ins:todo')));
     okG('B/插入分隔线', () => actAt('', 0, 'ins:hr').includes('---'), () => JSON.stringify(actAt('', 0, 'ins:hr')));
     okG('B/插入链接', () => actAt('', 0, 'ins:link').includes(']('), () => JSON.stringify(actAt('', 0, 'ins:link')));
-    okG('B/插入图片', () => actAt('', 0, 'ins:image').includes('!['), () => JSON.stringify(actAt('', 0, 'ins:image')));
+    // 插入图片现在是弹窗（选本地 / 远程），不再直接往文档里塞语法。
+    // 这里只验证「命令确实触发了弹窗」，具体两种插入路径由 verify-ui-changes.js 覆盖。
+    okG('B/插入图片弹窗', () => {
+      Q.setDoc('', 0);
+      Q.run('ins:image');
+      const dlg = document.querySelector('.modal-mask');
+      const acts = dlg ? Array.from(dlg.querySelectorAll('.img-choice')).map(b => b.dataset.act) : [];
+      if (dlg) dlg.remove();
+      return acts.includes('local') && acts.includes('remote');
+    }, () => '未出现本地/远程两个选项');
 
     /* 表格用选区当表头 */
     eqG('B/表格-选区当表头', () => actSel('A\\nB\\nC', 0, 5, 'ins:table'),

@@ -68,6 +68,22 @@ function createWindow() {
     win.show();
   });
 
+  // 隐藏原生菜单栏
+  //
+  // 页面上已经有全套可视化图标按钮（新建/打开/保存/表格/列表/…），
+  // 再挂一排文字菜单是重复的，Windows 上它还会白占一整行。
+  //
+  // Windows / Linux：干脆不设应用菜单。
+  //   ⚠ 快捷键全部由渲染层实现（app.js 里的全局 keydown），
+  //     所以删菜单不会丢快捷键 —— 这一点有 verify-shortcuts.js 守着。
+  // macOS：菜单栏在屏幕顶部，属于系统约定（Cmd+Q / 复制粘贴 / 窗口列表），
+  //   保留显示。
+  if (process.platform !== 'darwin') {
+    try {
+      Menu.setApplicationMenu(null);
+    } catch (e) { /* 忽略 */ }
+  }
+
   // 渲染进程崩了 / 白屏了 —— 记下来，用户反馈时能查
   win.webContents.on('render-process-gone', (_e, details) => {
     logger.error('渲染进程崩溃', details);
@@ -189,6 +205,9 @@ function buildMenu() {
     }
   ];
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+  // 菜单栏的隐藏在 createWindow() 里做（那时窗口才存在）。
+  // 但 accelerator 靠菜单项注册，所以菜单本身必须留着 ——
+  // 详见 createWindow() 里的注释。
 }
 
 /* ---------------- IPC：文件操作 ---------------- */
@@ -201,6 +220,30 @@ ipcMain.handle('fs:open', async () => {
   const p = r.filePaths[0];
   pushRecent(p);
   return { path: p, content: fs.readFileSync(p, 'utf-8') };
+});
+
+/* 选择本地图片（插入图片时用）
+ *
+ * 返回相对当前文档的路径 —— 直接写绝对路径太啰嗦，
+ * 而且文档一挪动就全失效。 */
+ipcMain.handle('fs:pickImage', async (_e, baseDir) => {
+  const r = await dialog.showOpenDialog(win, {
+    title: '选择图片',
+    properties: ['openFile'],
+    filters: [{ name: '图片', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp'] }]
+  });
+  if (r.canceled || !r.filePaths[0]) return null;
+  const p = r.filePaths[0];
+  try {
+    // 能算相对路径就算，跨盘符时退回绝对路径
+    const rel = path.relative(baseDir || '', p);
+    if (rel && !rel.startsWith('..') && !path.isAbsolute(rel)) {
+      return { path: rel.replace(/\\/g, '/'), absolute: p };
+    }
+    return { path: p, absolute: p };
+  } catch (e) {
+    return { path: p, absolute: p };
+  }
 });
 
 ipcMain.handle('fs:openPath', async (_e, p) => {
@@ -224,28 +267,11 @@ ipcMain.handle('log:report', (_e, payload) => {
   return true;
 });
 
-/** 导出诊断日志：复制到剪贴板 + 打开日志目录 */
-ipcMain.handle('log:export', async () => {
-  const text = logger.tail(800);
-  const info = {
-    文本: text,
-    日志文件: logger.file(),
-    日志目录: logger.dir()
-  };
-  try {
-    const { clipboard } = require('electron');
-    clipboard.writeText(text);
-    logger.info('导出诊断日志', { 行数: text.split('\n').length });
-  } catch (e) {
-    logger.warn('复制到剪贴板失败', { message: e.message });
-  }
-  try {
-    shell.openPath(logger.dir());
-  } catch (e) {
-    logger.warn('打开日志目录失败', { message: e.message });
-  }
-  return info;
-});
+/** 导出诊断日志：复制到剪贴板 + 打开日志目录
+ *
+ *  实现只有一份 —— exportDiagnostics()。
+ *  之前这里另写了一遍，跟 exportDiagnostics 逻辑重复还略有差别。 */
+ipcMain.handle('log:export', async () => exportDiagnostics());
 
 /** 只取日志文本（不打扰用户） */
 ipcMain.handle('log:tail', async () => logger.tail(800));
@@ -581,6 +607,42 @@ ipcMain.handle('app:openExternal', async (_e, url) => {
     return true;
   }
   return false;
+});
+
+/* ---------------- 设置面板用的 IPC ----------------
+ *
+ * 页面上没有图标入口的功能（检查更新、修复文件关联、导出诊断日志、
+ * 开发者工具）统一收进「设置」弹窗，由渲染层调这些。
+ */
+
+/** 修复文件关联（设置面板用） */
+ipcMain.handle('app:repairFileAssoc', async () => repairFileAssoc());
+
+/** 导出诊断日志（设置面板用） */
+ipcMain.handle('app:exportLog', async () => exportDiagnostics());
+
+/** 打开开发者工具 */
+ipcMain.handle('app:devtools', async () => {
+  if (win && !win.isDestroyed()) {
+    win.webContents.toggleDevTools();
+    return true;
+  }
+  return false;
+});
+
+/** 当前文件关联状态（设置面板显示用） */
+ipcMain.handle('app:fileAssocStatus', async () => {
+  try {
+    const list = await fileAssoc.check();
+    const md = list.find(x => x.ext === 'md');
+    return {
+      ok: true,
+      progid: md ? md.progid : '(未关联)',
+      isQingMo: md ? md.isQingMo : false
+    };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
 });
 
 app.whenReady().then(() => {

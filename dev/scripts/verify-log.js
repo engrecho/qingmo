@@ -40,6 +40,10 @@ app.whenReady().then(async () => {
   // 1. 初始化
   const inited = logger.init(app);
   check('日志系统初始化', inited);
+  // ⚠ 日志是「合并写盘」—— 缓冲 300ms 后才 appendFileSync。
+  //   所以 init 之后立刻 existsSync 会是 false（当天第一个日志文件时必失败，
+  //   之后就因为文件已存在而侥幸通过）。这里等落盘完成再断言。
+  await new Promise(r => setTimeout(r, 500));
   check('日志文件已创建', !!logger.file() && fs.existsSync(logger.file()), logger.file());
 
   // 2. 写几条不同级别的

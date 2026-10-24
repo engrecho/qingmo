@@ -73,8 +73,14 @@ function hello(name) {
 /* ============ Editor 初始化 ============ */
 const editorTheme = EditorView.theme({
   "&": { color: "var(--fg)", backgroundColor: "var(--bg)", height: "100%" },
-  ".cm-content": { caretColor: "var(--accent)", padding: "14px 0" },
-  ".cm-line": { padding: "0 16px" }
+  ".cm-content": { caretColor: "var(--caret)", padding: "14px 0" },
+  ".cm-line": { padding: "0 16px" },
+  // 行号那一列：CodeMirror 内置的 &light .cm-gutters 特异性更高，
+  // 不在这里再声明一次的话深色模式会留一条白带。
+  ".cm-gutters": { backgroundColor: "var(--c-25)", color: "var(--c-400)" },
+  ".cm-activeLineGutter": { backgroundColor: "transparent" },
+  ".cm-activeLine": { backgroundColor: "transparent" },
+  ".cm-cursor, .cm-dropCursor": { borderLeftColor: "var(--caret)" }
 });
 
 const syntaxTheme = EditorView.theme({
@@ -1021,25 +1027,101 @@ function toggleLinePrefix(match, make) {
   view.focus();
 }
 
-function insertList(kind) {
-  if (kind === 'ol') {
-    toggleLinePrefix(
-      (t) => { const m = /^(\s*\d+[.)]\s+)/.exec(t); return m ? m[1] : null; },
-      (i) => i + '. '
-    );
-  } else {
-    toggleLinePrefix(
-      (t) => { const m = /^(\s*[-*+]\s+)/.exec(t); return m ? m[1] : null; },
-      () => '- '
-    );
-  }
+/* ============ 列表类型互相切换 ============
+ *
+ * 需求：无序 / 有序 / 任务 三者支持切换。
+ * 之前每个按钮各管各的：
+ *   · 点「无序」在有序行上 → 因为有序行不匹配 ul 的正则，会**再加一个** `- `，变成两行标记
+ *   · 点「任务」在无序行上 → 无序行匹配了 todo 的正则（todo 的正则把方括号设成可选），
+ *     于是走「删除」分支，把 `- ` 删了 —— 用户以为是要转成任务列表，结果列表没了
+ *
+ * 现在按「当前是什么类型」决定动作：
+ *   当前是同一类型   → 取消（去掉标记）
+ *   当前是别的类型   → 原地替换成目标类型
+ *   当前不是列表     → 加标记
+ */
+const LIST_TYPES = ['ul', 'ol', 'todo'];
+
+/** 判断一行属于哪种列表类型 */
+function listKindOf(text) {
+  if (/^\s*[-*+]\s+\[[ xX]\]\s+/.test(text)) return 'todo';
+  if (/^\s*\d+[.)]\s+/.test(text)) return 'ol';
+  if (/^\s*[-*+]\s+/.test(text)) return 'ul';
+  return null;
 }
 
-function insertTodo() {
-  toggleLinePrefix(
-    (t) => { const m = /^(\s*[-*+]\s+(?:\[[ xX]\]\s+)?)/.exec(t); return m ? m[1] : null; },
-    () => '- [ ] '
-  );
+/** 该类型该用的标记（有序列表按行序号递增） */
+function listMarkerFor(kind, index) {
+  if (kind === 'ol') return (index + 1) + '. ';
+  if (kind === 'todo') return '- [ ] ';
+  return '- ';
+}
+
+function switchList(kind) {
+  const { from, to } = getSel();
+  const startLine = view.state.doc.lineAt(from);
+  const endLine = view.state.doc.lineAt(to);
+
+  // 整段取出再整段写回 ——
+  // 之前是「每行一个 change」，但第一行转换后长度会变（'1. 甲' → '- 甲' 少一个字符），
+  // 后面几行的位置就全偏了：结果变成 '- 甲\n2. 乙'（第二行的 '2. ' 没被替换）。
+  const raw = view.state.sliceDoc(startLine.from, endLine.to);
+  const rawLines = raw.split('\n');
+
+  const out = rawLines.map((text, i) => {
+    const cur = listKindOf(text);
+    const m = /^(\s*)(?:[-*+]\s+(?:\[[ xX]\]\s+)?|\d+[.)]\s+)?/.exec(text);
+    const indent = m ? m[1] : '';
+    const body = text.slice(m ? m[0].length : 0);
+
+    if (cur === kind) {
+      // 同一类型 → 取消列表标记，留正文
+      return indent + body;
+    }
+    // 别的类型 → 原地换成目标标记
+    return indent + listMarkerFor(kind, i) + body;
+  });
+
+  const newText = out.join('\n');
+  if (newText === raw) return;
+  view.dispatch({
+    changes: { from: startLine.from, to: endLine.to, insert: newText },
+    selection: { anchor: startLine.from }
+  });
+  view.focus();
+}
+
+/** 清除所有格式：把选区/当前行里的 markdown 标记全去掉 */
+function clearFormat() {
+  const { from, to } = getSel();
+  const startLine = view.state.doc.lineAt(from);
+  const endLine = view.state.doc.lineAt(to);
+
+  // 逐行剥掉：标题标记、引用、列表标记、强调、删除线、行内代码
+  const stripLine = (line) => line
+    .replace(/^(\s*)#{1,6}\s+/, '$1')          // 标题
+    .replace(/^(\s*)>\s?/, '$1')              // 引用
+    .replace(/^(\s*)(?:[-*+]\s+(?:\[[ xX]\]\s+)?|\d+[.)]\s+)/, '$1')  // 列表
+    .replace(/~~([^~]+)~~/g, '$1')            // 删除线
+    .replace(/\*\*([^*]+)\*\*/g, '$1')        // 粗体
+    .replace(/\*([^*]+)\*/g, '$1')            // 斜体
+    .replace(/`([^`]+)`/g, '$1')              // 行内代码
+    .replace(/\[([^\]]*)\]\(([^)]*)\)/g, '$1') // 链接
+    .replace(/!\[([^\]]*)\]\(([^)]*)\)/g, '$1');// 图片
+
+  // 同样是整段取出再整段写回 —— 逐行 change 会在行长变化后位置漂移
+  const raw = view.state.sliceDoc(startLine.from, endLine.to);
+  const newText = raw.split('\n').map(stripLine).join('\n');
+
+  if (newText === raw) {
+    toast('没有可清除的格式');
+    return;
+  }
+  view.dispatch({
+    changes: { from: startLine.from, to: endLine.to, insert: newText },
+    selection: { anchor: startLine.from }
+  });
+  view.focus();
 }
 
 function insertHr() {
@@ -1061,10 +1143,101 @@ function insertLink() {
   toast('已插入链接，填入地址后按 Esc');
 }
 
+/* ============ 插入图片（弹窗选本地 / 远程） ============ */
 function insertImage() {
-  // 图片语法是行内的（![alt](src)），留在光标处不会破坏段落结构
-  replaceSelection('![图片描述](https://)', 7);
-  toast('已插入图片语法');
+  const dlg = document.createElement('div');
+  dlg.className = 'modal-mask';
+  dlg.innerHTML = `
+    <div class="modal">
+      <div class="modal-head">
+        <span class="modal-title">插入图片</span>
+        <button class="ub-btn icon" data-act="close" title="关闭">
+          <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <div class="img-picker">
+          <button class="img-choice" data-act="local">
+            <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9.5" r="1.6"/><path d="M21 16l-5-5-5.5 5.5L8 14l-5 5"/></svg>
+            <b>本地图片</b>
+            <span>从电脑里选一张图片文件</span>
+          </button>
+          <button class="img-choice" data-act="remote">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18"/></svg>
+            <b>远程图片</b>
+            <span>填图片网址（http/https）</span>
+          </button>
+        </div>
+        <div class="img-remote" style="display:none">
+          <label class="img-label" for="imgUrl">图片网址</label>
+          <input class="img-input" id="imgUrl" type="url" placeholder="https://example.com/photo.png" />
+          <div class="img-hint">插入后可以再改说明文字（alt）</div>
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button class="ub-btn" data-act="close">取消</button>
+        <button class="ub-btn primary" data-act="confirm" style="display:none">插入</button>
+      </div>
+    </div>
+  `;
+
+  const remoteBox = dlg.querySelector('.img-remote');
+  const urlInput = dlg.querySelector('#imgUrl');
+  const confirmBtn = dlg.querySelector('[data-act="confirm"]');
+  let mode = null;
+
+  const close = () => dlg.remove();
+
+  const insert = (src, alt) => {
+    const s = String(src || '').trim();
+    if (!s) { toast('请填写图片网址'); return; }
+    const safeAlt = String(alt || '图片').replace(/[\[\]]/g, '');
+    const md = `![${safeAlt}](${s})`;
+    replaceSelection(md, md.length - s.length - 1);
+    close();
+    toast('已插入图片');
+  };
+
+  dlg.addEventListener('click', async (e) => {
+    const btn = e.target.closest('[data-act]');
+    if (!btn) return;
+    const act = btn.dataset.act;
+
+    if (act === 'close') { close(); return; }
+
+    if (act === 'local') {
+      // 本地文件要拿到当前文档所在目录，才能算出相对路径
+      let baseDir = '';
+      try {
+        const tab = tabs.find(t => t.id === activeId);
+        if (tab && tab.path) baseDir = tab.path.replace(/[\\/][^\\/]*$/, '');
+      } catch (err) { /* 拿不到就用绝对路径 */ }
+      const r = await window.api.pickImage(baseDir);
+      if (r && r.path) insert(r.path, '图片');
+      return;
+    }
+
+    if (act === 'remote') {
+      mode = 'remote';
+      remoteBox.style.display = '';
+      confirmBtn.style.display = '';
+      dlg.querySelectorAll('.img-choice').forEach(b => { b.style.display = 'none'; });
+      urlInput.focus();
+      return;
+    }
+
+    if (act === 'confirm') {
+      insert(urlInput.value, '图片');
+      return;
+    }
+  });
+
+  urlInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); insert(urlInput.value, '图片'); }
+  });
+
+  document.body.appendChild(dlg);
+  requestAnimationFrame(() => dlg.classList.add('show'));
 }
 
 function heading(level) {
@@ -1239,6 +1412,185 @@ function formattingKeymap() {
   ];
 }
 
+/* ============ 设置面板 ============
+ *
+ * 原来这些功能散在原生菜单里（帮助 → 检查更新 / 修复文件关联 / 导出日志），
+ * 但页面上已经有全套可视化图标，再挂文字菜单是重复的（Windows 上还占一行）。
+ * 现在：菜单栏隐藏，只保留快捷键；页面上没图标的功能收进这个面板。
+ */
+function openSettings() {
+  const old = document.getElementById('settingsDialog');
+  if (old) old.remove();
+
+  let ver = '—';
+  try { ver = window.api.version ? window.api.version() : '—'; } catch (e) {}
+
+  const dlg = document.createElement('div');
+  dlg.id = 'settingsDialog';
+  dlg.className = 'modal-mask';
+  dlg.innerHTML = `
+    <div class="modal" style="width:min(520px,100%)">
+      <div class="modal-head">
+        <span class="modal-title">设置</span>
+        <button class="ub-btn icon" data-act="close" title="关闭">
+          <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <div class="set-sec">
+          <div class="set-sec-title">外观</div>
+          <div class="set-row">
+            <div class="set-label">
+              <b>深色模式</b>
+              <span>编辑区与预览区同时切换</span>
+            </div>
+            <label class="set-switch">
+              <input type="checkbox" data-set="dark" />
+              <span class="set-switch-track"></span>
+            </label>
+          </div>
+        </div>
+
+        <div class="set-sec">
+          <div class="set-sec-title">编辑</div>
+          <div class="set-row">
+            <div class="set-label">
+              <b>Markdown 编辑手感</b>
+              <span>表格 Tab 跳格等快捷行为</span>
+            </div>
+            <label class="set-switch">
+              <input type="checkbox" data-set="mdkeymap" />
+              <span class="set-switch-track"></span>
+            </label>
+          </div>
+          <div class="set-row">
+            <div class="set-label">
+              <b>预览区直接编辑</b>
+              <span>在右侧渲染结果里直接打字</span>
+            </div>
+            <label class="set-switch">
+              <input type="checkbox" data-set="liveedit" />
+              <span class="set-switch-track"></span>
+            </label>
+          </div>
+        </div>
+
+        <div class="set-sec">
+          <div class="set-sec-title">文件</div>
+          <div class="set-row">
+            <div class="set-label">
+              <b>Markdown 文件关联</b>
+              <span id="setAssoc">检查中…</span>
+            </div>
+            <button class="ub-btn" data-act="repair-assoc">修复</button>
+          </div>
+        </div>
+
+        <div class="set-sec">
+          <div class="set-sec-title">高级</div>
+          <div class="set-actions">
+            <button class="ub-btn" data-act="check-update">检查更新</button>
+            <button class="ub-btn" data-act="export-log">导出诊断日志</button>
+            <button class="ub-btn" data-act="devtools">开发者工具</button>
+          </div>
+        </div>
+
+        <div class="set-foot">
+          <span>轻墨 QingMo · 版本 ${ver}</span>
+          <button class="ub-btn" data-url="https://github.com/engrecho/qingmo">项目主页</button>
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button class="ub-btn primary" data-act="close">完成</button>
+      </div>
+    </div>
+  `;
+
+  const dark = dlg.querySelector('[data-set="dark"]');
+  const mdk = dlg.querySelector('[data-set="mdkeymap"]');
+  const live = dlg.querySelector('[data-set="liveedit"]');
+  dark.checked = document.documentElement.dataset.theme === 'dark';
+  mdk.checked = mdKeymapEnabled();
+  live.checked = !!liveEdit;
+
+  dlg.addEventListener('change', (e) => {
+    const t = e.target;
+    if (t.dataset.set === 'dark') setTheme(t.checked ? 'dark' : 'light');
+    if (t.dataset.set === 'mdkeymap') setMdKeymapEnabled(t.checked);
+    if (t.dataset.set === 'liveedit') setLiveEdit(t.checked);
+  });
+
+  dlg.addEventListener('click', async (e) => {
+    const u = e.target.closest('[data-url]');
+    if (u) { window.api.openExternal(u.dataset.url); return; }
+
+    const btn = e.target.closest('[data-act]');
+    if (!btn) return;
+    const act = btn.dataset.act;
+
+    if (act === 'close') { dlg.remove(); return; }
+
+    if (act === 'repair-assoc') {
+      const box = dlg.querySelector('#setAssoc');
+      if (box) box.textContent = '正在修复…';
+      try {
+        const r = await window.api.repairFileAssoc();
+        if (box) {
+          box.textContent = (r && r.ok)
+            ? '已修复 —— 双击 .md 现在会用轻墨打开'
+            : '修复失败：' + ((r && r.error) || '未知原因');
+        }
+        toast((r && r.ok) ? '文件关联已修复' : '修复失败');
+      } catch (err) {
+        if (box) box.textContent = '修复失败：' + (err && err.message);
+      }
+      return;
+    }
+
+    if (act === 'check-update') {
+      dlg.remove();
+      // 复用 update.js 的检查逻辑（它会弹更新对话框）——
+      // 两个 bundle 只能通过 window 搭桥
+      if (typeof window.qingmoCheckUpdate === 'function') {
+        window.qingmoCheckUpdate(true);
+      } else {
+        toast('更新模块还没加载好');
+      }
+      return;
+    }
+
+    if (act === 'export-log') {
+      dlg.remove();
+      try { await window.api.exportLog(); } catch (e) { toast('导出失败'); }
+      return;
+    }
+
+    if (act === 'devtools') {
+      dlg.remove();
+      try { await window.api.devtools(); } catch (e) { /* 忽略 */ }
+      return;
+    }
+  });
+
+  document.body.appendChild(dlg);
+  requestAnimationFrame(() => dlg.classList.add('show'));
+
+  // 异步查关联状态
+  (async () => {
+    const box = dlg.querySelector('#setAssoc');
+    if (!box) return;
+    try {
+      const r = await window.api.fileAssocStatus();
+      if (!r || !r.ok) { box.textContent = '检查失败'; return; }
+      box.textContent = r.isQingMo
+        ? '已关联到轻墨 ✓'
+        : '未关联（当前指向 ' + r.progid + '）';
+    } catch (e) {
+      box.textContent = '检查失败';
+    }
+  })();
+}
+
 /* ============ 命令分发 ============ */
 const COMMANDS = {
   'cmd:new': newFile,
@@ -1251,18 +1603,20 @@ const COMMANDS = {
   'fmt:italic': () => wrap("*", "*"),
   'fmt:strike': () => wrap("~~", "~~"),
   'fmt:code': () => wrap("`", "`"),
+  'fmt:clear': clearFormat,
   'fmt:h1': () => heading(1),
   'fmt:h2': () => heading(2),
   'fmt:h3': () => heading(3),
   'ins:table': insertTable,
   'ins:quote': insertQuote,
   'ins:code': insertCodeBlock,
-  'ins:ul': () => insertList('ul'),
-  'ins:ol': () => insertList('ol'),
-  'ins:todo': insertTodo,
+  'ins:ul': () => switchList('ul'),
+  'ins:ol': () => switchList('ol'),
+  'ins:todo': () => switchList('todo'),
   'ins:hr': insertHr,
   'ins:link': insertLink,
-  'ins:image': insertImage
+  'ins:image': insertImage,
+  'app:settings': openSettings
 };
 
 function run(cmd) {
@@ -1415,6 +1769,7 @@ document.getElementById("titlebar").addEventListener("click", e => {
 });
 document.getElementById("btnTheme").addEventListener("click", toggleTheme);
 document.getElementById("btnLive").addEventListener("click", () => setLiveEdit(!liveEdit));
+document.getElementById("btnSettings").addEventListener("click", openSettings);
 document.getElementById("btnPanel").addEventListener("click", toggleSidebar);
 document.getElementById("btnCollapse").addEventListener("click", toggleSidebar);
 document.getElementById("sbNew").addEventListener("click", () => newFile());
@@ -1461,26 +1816,92 @@ document.getElementById("sbCloseAll").addEventListener("click", () => closeAllTa
   });
 })();
 
-/* 全局快捷键：侧边栏折叠、标签切换、关闭 */
+/* ============================================
+   全局快捷键
+   --------------------------------------------
+   Windows / Linux 上【没有原生菜单栏】了（页面上全是图标按钮，
+   文字菜单是重复的）。而原生菜单的 accelerator 是绑在菜单项上的 ——
+   菜单一撤，快捷键就全没了。
+   所以快捷键全部由这里接管。
+
+   已经在 CodeMirror keymap 里实现的（不要重复，否则会双触发）：
+     Mod-b / Mod-i / Mod-e / Mod-Shift-x   加粗/斜体/行内代码/删除线
+     Mod-Shift-k / Mod-Shift-q             代码块/引用
+     Mod-Alt-1/2/3                         一到三级标题
+     Mod-f                                 查找（searchKeymap）
+     Mod-z / Mod-y                         撤销/重做（historyKeymap）
+   ============================================ */
 window.addEventListener("keydown", e => {
   const mod = e.ctrlKey || e.metaKey;
+  const k = e.key.toLowerCase();
 
+  // 数字键必须看【物理键位】e.code，不能看 e.key ——
+  // 按住 Shift 时 e.key 会变成符号（Shift+7 是 '&'、Shift+8 是 '*'、Shift+9 是 '('），
+  // 用 e.key 判断会全部落空。e.code 恒为 'Digit7' 这种，不受 Shift 影响。
+  const digit = /^Digit([1-9])$/.exec(e.code || '');
+
+  // ---------- 文件 ----------
+  if (mod && !e.shiftKey && !e.altKey && k === "n") {
+    e.preventDefault(); newFile(); return;
+  }
+  if (mod && !e.shiftKey && !e.altKey && k === "o") {
+    e.preventDefault(); openFile(); return;
+  }
+  if (mod && !e.shiftKey && !e.altKey && k === "s") {
+    e.preventDefault(); saveFile(false); return;
+  }
+  if (mod && e.shiftKey && !e.altKey && k === "s") {
+    e.preventDefault(); saveFile(true); return;
+  }
+  if (mod && e.shiftKey && !e.altKey && k === "e") {
+    e.preventDefault(); exportHtml(); return;
+  }
+
+  // ---------- 插入 ----------
+  if (mod && !e.shiftKey && !e.altKey && k === "t") {
+    e.preventDefault(); insertTable(); return;
+  }
+  if (mod && e.shiftKey && !e.altKey) {
+    if (digit && digit[1] === "8") { e.preventDefault(); switchList('ul'); return; }
+    if (digit && digit[1] === "7") { e.preventDefault(); switchList('ol'); return; }
+    if (digit && digit[1] === "9") { e.preventDefault(); switchList('todo'); return; }
+    if (k === "m") { e.preventDefault(); insertHr(); return; }
+    if (k === "l") { e.preventDefault(); insertLink(); return; }
+    if (k === "i") { e.preventDefault(); insertImage(); return; }
+  }
+
+  // ---------- 视图 ----------
+  // Ctrl+1/2/3 = 仅编辑 / 分栏 / 仅预览
+  if (mod && !e.shiftKey && !e.altKey && digit) {
+    const n = digit[1];
+    if (n === "1" || n === "2" || n === "3") {
+      e.preventDefault();
+      setMode(n === "1" ? 'edit' : n === "2" ? 'split' : 'preview');
+      return;
+    }
+  }
   // Ctrl+Shift+P 切换「预览区直接编辑」
-  if (mod && e.shiftKey && !e.altKey && e.key.toLowerCase() === "p") {
+  if (mod && e.shiftKey && !e.altKey && k === "p") {
     e.preventDefault();
     setLiveEdit(!liveEdit);
     return;
   }
+  // Ctrl+D 切换深色模式
+  if (mod && !e.shiftKey && !e.altKey && k === "d") {
+    e.preventDefault();
+    toggleTheme();
+    return;
+  }
 
   // Ctrl+B 折叠侧边栏
-  if (mod && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "b") {
-    // 如果有选区，优先给加粗
+  if (mod && !e.shiftKey && !e.altKey && k === "b") {
+    // 如果有选区，优先给加粗（CodeMirror 的 Mod-b 会处理）
     const sel = view.state.selection.main;
     if (sel.empty) { e.preventDefault(); toggleSidebar(); return; }
   }
 
   // Ctrl+W 关闭当前标签
-  if (mod && e.key.toLowerCase() === "w" && activeId != null) {
+  if (mod && !e.shiftKey && !e.altKey && k === "w" && activeId != null) {
     e.preventDefault();
     closeTab(activeId);
     return;
@@ -1498,9 +1919,12 @@ window.addEventListener("keydown", e => {
     return;
   }
 
-  // Ctrl+1..9 直接跳到第 N 个标签
-  if (mod && !e.shiftKey && !e.altKey && /^[1-9]$/.test(e.key)) {
-    const idx = parseInt(e.key, 10) - 1;
+  // Alt+1..9 直接跳到第 N 个标签
+  //
+  // 之前是 Ctrl+1..9 —— 但 Ctrl+1/2/3 要留给视图切换（仅编辑/分栏/预览），
+  // 两者本来就打架，标签直达实际上从来没生效过。改用 Alt，无冲突。
+  if (e.altKey && !mod && !e.shiftKey && digit) {
+    const idx = parseInt(digit[1], 10) - 1;
     if (idx < tabs.length) { e.preventDefault(); switchTab(tabs[idx].id); }
   }
 });

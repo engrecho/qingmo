@@ -1,6 +1,6 @@
 {
   "name": "qingmo",
-  "version": "1.5.1",
+  "version": "1.6.0",
   "description": "轻墨 QingMo — 简洁轻量的跨平台 Markdown 编辑器",
   "main": "src/main/main.js",
   "author": "王君龙",
@@ -31,7 +31,7 @@
     "gen:logo": "electron scripts/gen-logo-icons.js",
     "check:bundle": "node scripts/check-bundle-fresh.js",
     "test:edit": "electron scripts/verify-edit.js",
-    "test:all": "npm run test:core && npm run test:live-edit && npm run test:dom && npm run test:edit && npm run test:keys && npm run test:ime && npm run test:real-input && npm run test:toggle && npm run test:log-loop && npm run test:log && npm run test:update && npm run test:update-fallback",
+    "test:all": "npm run test:core && npm run test:live-edit && npm run test:dom && npm run test:edit && npm run test:keys && npm run test:ime && npm run test:real-input && npm run test:toggle && npm run test:shortcuts && npm run test:log-loop && npm run test:log && npm run test:update && npm run test:update-fallback && npm run test:ui-changes",
     "verify:mac": "node scripts/verify-mac.js",
     "test:core": "node scripts/test-editor-core.js",
     "test:keys": "electron scripts/verify-keys.js",
@@ -45,7 +45,9 @@
     "test:ime": "electron scripts/verify-ime.js",
     "test:real-input": "electron scripts/verify-real-input.js",
     "test:toggle": "electron scripts/verify-md-keymap-toggle.js",
-    "test:log-loop": "electron scripts/verify-log-loop.js"
+    "test:log-loop": "electron scripts/verify-log-loop.js",
+    "test:ui-changes": "electron scripts/verify-ui-changes.js",
+    "test:shortcuts": "electron scripts/verify-shortcuts.js"
   },
   "devDependencies": {
     "electron": "^33.0.0",

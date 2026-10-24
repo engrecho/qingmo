@@ -2,6 +2,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('api', {
   open: () => ipcRenderer.invoke('fs:open'),
+  pickImage: (baseDir) => ipcRenderer.invoke('fs:pickImage', baseDir),
   openPath: (p) => ipcRenderer.invoke('fs:openPath', p),
   save: (p, c) => ipcRenderer.invoke('fs:save', p, c),
   saveAs: (c, name) => ipcRenderer.invoke('fs:saveAs', c, name),
@@ -20,6 +21,9 @@ contextBridge.exposeInMainWorld('api', {
   // 文件关联检查与修复（「双击 md 打不开」时用来定位）
   checkFileAssoc: () => ipcRenderer.invoke('app:checkFileAssoc'),
   repairFileAssoc: () => ipcRenderer.invoke('app:repairFileAssoc'),
+  fileAssocStatus: () => ipcRenderer.invoke('app:fileAssocStatus'),
+  // 设置面板
+  devtools: () => ipcRenderer.invoke('app:devtools'),
   version: () => ipcRenderer.sendSync('app:getVersion'),
   on: (ch, fn) => {
     const list = Array.isArray(ch) ? ch : [ch];

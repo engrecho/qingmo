@@ -40,6 +40,11 @@ async function checkUpdate(force = false) {
   }
 }
 
+/* 暴露给 app.js 的设置面板 ——
+ * app.js 和 update.js 是两个独立 bundle，彼此看不见对方的内部函数，
+ * 只能通过 window 搭桥。 */
+window.qingmoCheckUpdate = checkUpdate;
+
 /* ---------- 顶部提示条 ---------- */
 function showUpdateBanner(info) {
   hideUpdateBanner();
