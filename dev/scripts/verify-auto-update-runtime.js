@@ -78,17 +78,17 @@ app.whenReady().then(async () => {
     check('D/检查有返回', !!r);
     check('D/耗时合理（<20s）', dt < 20000, dt + 'ms');
 
-    if (r && r.ok) {
-      check('D/拿到版本号', !!r.latest, r.latest);
-      check('D/成功时没有错误信息', !r.error, r.error);
+    // ⚠ auto-update 的 check() 返回的是 { checking, error, available, version }，
+    //   【没有 ok 字段】。所以判据是「有没有 error」，不是 r.ok。
+    if (r && r.error) {
+      // 失败也是要验证的场景 —— 错误信息必须可读
+      check('D/失败时有可读的错误信息', !!r.error, '错误: ' + r.error);
+      log('  （当前是限流/网络受限状态，这正是要能给出清晰错误的场景）');
+    } else {
+      check('D/检查成功', !!r, JSON.stringify(r));
       check('D/可用状态与版本号一致',
         r.available === (!!r.version),
         'available=' + r.available + ' version=' + r.version);
-    } else {
-      // 失败也是要验证的场景 —— 错误信息必须可读
-      check('D/失败时有可读的错误信息', !!(r && r.error),
-        '错误: ' + (r && r.error));
-      log('  （当前是限流/网络受限状态，这正是要能给出清晰错误的场景）');
     }
   }
 
