@@ -1,5 +1,7 @@
 ## v1.6.5
 
+已于 2026-10-26 发布：[GitHub Release](https://github.com/engrecho/qingmo/releases/tag/v1.6.5)。提供 Mac Apple 芯片 DMG / ZIP、Windows x64 安装版 / 便携版及 latest.yml；5 个远程文件均已通过大小与 SHA256 对比。
+
 - 点击预览区或源码区的有序列表序号，选择从 1 重新编号或从指定数字开始。
 - 移除工具栏「起始」按钮，起点设置直接在列表上完成。
 - 保持嵌套列表编号和当前光标定位；列表交互回归 10 项通过。
