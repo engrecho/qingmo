@@ -1,6 +1,6 @@
 {
   "name": "qingmo",
-  "version": "1.6.1",
+  "version": "1.6.2",
   "description": "轻墨 QingMo — 简洁轻量的跨平台 Markdown 编辑器",
   "main": "src/main/main.js",
   "author": "王君龙",

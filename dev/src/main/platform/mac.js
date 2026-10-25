@@ -20,9 +20,9 @@ module.exports = {
   appMenuItem: { role: 'appMenu' },
   quitMenuItem: { role: 'close' },
 
-  setAppIcon(app, nativeImage, icon) {
-    try { app.dock.setIcon(nativeImage.createFromPath(icon)); } catch (e) {}
-  },
+  // Dock 使用应用包内的 macOS ICNS，保留平台专属透明留白。
+  // 不用共享的满幅 Windows PNG 覆盖系统加载的图标。
+  setAppIcon() {},
 
   /**
    * macOS 的打开方式有两条，两条都要支持：

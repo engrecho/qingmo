@@ -1,3 +1,12 @@
+# 轻墨 QingMo v1.6.2
+
+- 修正 macOS 图标视觉偏大：整体缩小至约 80%，补齐四周透明留白。
+- Dock 使用包内 macOS 图标，避免启动时被满幅 PNG 覆盖。
+- Windows 图标保持不变，继续包含 v1.6.1 的启动崩溃修复。
+- 提供 macOS Apple 芯片 / Intel 的 DMG、ZIP，以及 Windows x64 安装版和便携版。
+
+---
+
 # 轻墨 QingMo v1.6.1
 
 ## 启动问题修复
