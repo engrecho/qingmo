@@ -169,13 +169,20 @@ try {
   }
   check('zip 里有符号链接条目（>=10）', links >= 10, '实际: ' + links);
   check('zip 里有目录条目（>=100）', dirs >= 100, '实际: ' + dirs);
-  // 条目总数是最硬的指标：官方 Electron 包是 255 个，
-  // 少一个都说明有条目被弄丢了（早期版本就丢过）。
-  check('zip 条目完整（至少 255 项）', links + dirs + files >= 255,
-    '实际: ' + (links + dirs + files) + ' (链接' + links + ' 目录' + dirs + ' 文件' + files + ')');
+  // 不固定条目数：arm64 / x64 的官方框架文件数量不同。
+  // 用关键入口、框架链接及解压后签名校验确认完整性。
   check('Versions/Current 是符号链接',
     !!currentEntry && (currentEntry.mode & 0xf000) === S_IFLNK,
     currentEntry ? 'mode=0x' + currentEntry.mode.toString(16) : '(条目不存在)');
+}
+
+if (process.platform === 'darwin') {
+  try {
+    execFileSync('codesign', ['--verify', '--deep', '--strict', APP], { stdio: 'pipe' });
+    check('应用签名完整', true);
+  } catch (e) {
+    check('应用签名完整', false, e.stderr ? e.stderr.toString() : e.message);
+  }
 }
 
 report();
