@@ -18,6 +18,8 @@ function check(name, pass, detail) {
 }
 
 app.whenReady().then(async () => {
+  ipcMain.handle('app:autoState', () => ({ phase: 'idle' }));
+  ipcMain.on('app:getVersion', event => { event.returnValue = 'test'; });
   // 渲染层会调这些 IPC
   ipcMain.handle('log:report', () => true);
   ipcMain.handle('fs:pickImage', () => null);

@@ -18,9 +18,10 @@ if (!process.versions.electron) {
 const path = require('path');
 const fs = require('fs');
 const DEV = path.join(__dirname, '..');
-const { app, BrowserWindow } = require('electron');
+const { app, BrowserWindow, ipcMain } = require('electron');
 
 app.whenReady().then(async () => {
+  ipcMain.handle('app:autoState', () => ({ phase: 'idle', ready: false }));
   const win = new BrowserWindow({
     width: 1280, height: 820, show: true,
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',

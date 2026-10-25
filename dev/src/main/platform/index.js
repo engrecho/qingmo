@@ -11,7 +11,7 @@ const IMPLS = {
   win32: './win'
 };
 
-// 未单独适配的平台（linux 等）复用 win 实现
-const chosen = IMPLS[process.platform] || IMPLS.win32;
+// 未适配的平台使用默认行为，不下载其他平台的安装包
+const chosen = IMPLS[process.platform] || './base';
 
 module.exports = require(chosen);

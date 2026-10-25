@@ -17,6 +17,14 @@ const base = require('./base');
 module.exports = {
   ...base,
   id: 'win',
+  imagePaths: require('path').win32,
+
+  matchUpdateInstaller(assets, arch) {
+    if (arch === 'x64') return assets.find(asset => /win-(?:x64-)?setup\.exe$/i.test(asset.name));
+    if (arch === 'arm64') return assets.find(asset => /win-arm64-setup\.exe$/i.test(asset.name));
+    return null;
+  },
+  updateInstallHint: '请先保存文档。打开安装程序后，按提示关闭轻墨并完成安装；便携版用户可用此安装程序安装新版。',
 
   titleBarStyle: 'default',
   appMenuItem: null,

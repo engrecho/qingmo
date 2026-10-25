@@ -16,6 +16,12 @@ module.exports = {
   ...base,
   id: 'mac',
 
+  matchUpdateInstaller(assets, arch) {
+    if (!['arm64', 'x64'].includes(arch)) return null;
+    return assets.find(asset => new RegExp('mac-' + arch + '\\.dmg$', 'i').test(asset.name));
+  },
+  updateInstallHint: '请先保存文档。打开 DMG 后，将轻墨拖入 Applications 替换旧版；替换前请退出轻墨。',
+
   titleBarStyle: 'hiddenInset',
   appMenuItem: { role: 'appMenu' },
   quitMenuItem: { role: 'close' },

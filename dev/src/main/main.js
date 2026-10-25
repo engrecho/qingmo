@@ -1,11 +1,37 @@
-const { app, BrowserWindow, Menu, ipcMain, dialog, shell, nativeImage } = require('electron');
+const { app, BrowserWindow, Menu, ipcMain, dialog, shell, nativeImage, net } = require('electron');
 const path = require('path');
 const fs = require('fs');
 // 平台差异统一走这一层（mac.js / win.js），本文件不再出现 process.platform 分支
 const platform = require('./platform');
 const logger = require('./logger');
 const fileAssoc = require('./file-assoc');
-const autoUpdate = require('./auto-update');
+const localImages = require('./local-images');
+const autoUpdate = require('./auto-update').createAutoUpdater({
+  app,
+  checkRelease,
+  fetch: (...args) => net.fetch(...args),
+  openInstaller: file => platform.openUpdateInstaller(shell, file),
+  onState: state => {
+    for (const window of BrowserWindow.getAllWindows()) {
+      if (!window.isDestroyed()) window.webContents.send('app:updateState', state);
+    }
+  },
+  onReady: async state => {
+    const options = {
+      type: 'info', title: '轻墨更新已下载',
+      message: `轻墨 ${state.version} 已下载，是否现在安装？`,
+      detail: platform.updateInstallHint,
+      buttons: ['打开安装包', '稍后'], defaultId: 0, cancelId: 1, noLink: true
+    };
+    const result = win && !win.isDestroyed()
+      ? await dialog.showMessageBox(win, options) : await dialog.showMessageBox(options);
+    if (result.response === 0) {
+      const installed = await autoUpdate.install();
+      if (!installed.ok) dialog.showErrorBox('无法打开更新安装包', installed.error);
+    }
+  },
+  log: (message, detail) => logger.info('[自动更新]', message, detail)
+});
 const { compareVersion } = require('./version');
 
 let win = null;
@@ -234,17 +260,11 @@ ipcMain.handle('fs:pickImage', async (_e, baseDir) => {
   });
   if (r.canceled || !r.filePaths[0]) return null;
   const p = r.filePaths[0];
-  try {
-    // 能算相对路径就算，跨盘符时退回绝对路径
-    const rel = path.relative(baseDir || '', p);
-    if (rel && !rel.startsWith('..') && !path.isAbsolute(rel)) {
-      return { path: rel.replace(/\\/g, '/'), absolute: p };
-    }
-    return { path: p, absolute: p };
-  } catch (e) {
-    return { path: p, absolute: p };
-  }
+  return { path: localImages.markdownImagePath(p, baseDir, platform.imagePaths), absolute: p };
 });
+
+ipcMain.handle('fs:readImage', (_event, source, documentPath) =>
+  localImages.readLocalImage(source, documentPath, platform.imagePaths));
 
 ipcMain.handle('fs:openPath', async (_e, p) => {
   try {
@@ -310,22 +330,12 @@ ipcMain.handle('app:getMdKeymap', async () => {
 
 /* ---------- 自动更新 ---------- */
 
-/** 检查自动更新（Windows 安装版可用） */
-ipcMain.handle('app:autoCheck', async (_e, silent) => {
-  const r = await autoUpdate.check(!!silent);
-  return { ...r, supported: !autoUpdate.isPortable() };
-});
+/** 手动检查和后台检查共用同一更新流程。 */
+ipcMain.handle('app:autoCheck', () => autoUpdate.checkAndDownload());
+ipcMain.handle('app:autoUpdate', () => autoUpdate.download());
+ipcMain.handle('app:installUpdate', () => autoUpdate.install());
+ipcMain.handle('app:autoState', () => autoUpdate.state());
 
-/** 下载并安装更新 */
-ipcMain.handle('app:autoUpdate', async () => {
-  if (autoUpdate.isPortable()) {
-    return { ok: false, error: '便携版不支持自动更新，请到发布页下载新版本' };
-  }
-  return autoUpdate.downloadAndInstall();
-});
-
-/** 自动更新状态（给渲染层轮询进度用） */
-ipcMain.handle('app:autoState', async () => autoUpdate.state());
 
 /**
  * 修复文件关联 —— 用户点了「帮助 → 修复文件关联」走这里。
@@ -493,7 +503,7 @@ async function checkUpdateFallback(current) {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 8000);
   try {
-    const res = await fetch(UPDATE_REDIRECT, {
+    const res = await net.fetch(UPDATE_REDIRECT, {
       redirect: 'manual',      // 不自动跟随，从 Location 头里读 tag
       signal: ctrl.signal,
       headers: { 'User-Agent': 'QingMo-Update-Check' }
@@ -524,39 +534,40 @@ async function checkUpdateFallback(current) {
   }
 }
 
-ipcMain.handle('app:checkUpdate', async () => {
+async function checkRelease() {
   const current = app.getVersion();
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 8000);
   try {
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 8000);
-    const res = await fetch(UPDATE_API, {
+    const res = await net.fetch(UPDATE_API, {
       signal: ctrl.signal,
       headers: {
         'Accept': 'application/vnd.github+json',
         'User-Agent': 'QingMo-Update-Check'
       }
     });
-    clearTimeout(timer);
     if (!res.ok) {
       // 403 = 触发速率限制（匿名 60 次/小时）→ 走降级
       if (res.status === 403 || res.status === 429) {
         logger.warn('更新检查触发 GitHub 限流，改用降级路径', { status: res.status });
+        clearTimeout(timer);
         return await checkUpdateFallback(current);
       }
       return { ok: false, current, error: `HTTP ${res.status}` };
     }
     const data = await res.json();
     const latest = String(data.tag_name || '').replace(/^v/i, '');
-    if (!latest) return { ok: false, current, error: '未解析到版本号' };
+    if (!/^\d+\.\d+\.\d+$/.test(latest) || data.draft || data.prerelease) return { ok: false, current, error: 'Release 不是有效的正式版本' };
 
     // 找当前平台的资源（匹配规则按平台分派，见 platform/）
-    const assets = (data.assets || []).map(a => ({
+    const assets = (data.assets || []).filter(a => a.state === 'uploaded').map(a => ({
       name: a.name,
       size: a.size,
-      url: a.browser_download_url
+      url: a.browser_download_url,
+      digest: a.digest
     }));
 
-    const match = platform.matchUpdateAsset(assets, process.arch);
+    const match = platform.matchUpdateInstaller(assets, process.arch);
 
     // ⚠ 有新版 ≠ 当前平台能下载到新版。
     //
@@ -590,11 +601,14 @@ ipcMain.handle('app:checkUpdate', async () => {
     // 网络异常也走降级 —— GitHub API 挂了就至少还能告诉用户「有没有新版」
     const err = e.name === 'AbortError' ? '请求超时' : e.message;
     logger.warn('更新检查失败，尝试降级路径', { error: err });
+    clearTimeout(timer);
     const fb = await checkUpdateFallback(current);
     if (fb.ok) return fb;
     return { ok: false, current, error: err };
-  }
-});
+  } finally { clearTimeout(timer); }
+}
+
+ipcMain.handle('app:checkUpdate', () => autoUpdate.checkAndDownload());
 
 /* compareVersion 已移到 ./version —— 测试要复用同一份实现，
    避免「测试里复制一份」导致实现改了测试没改。 */
@@ -663,6 +677,7 @@ app.whenReady().then(() => {
   initRecent();
   buildMenu();
   createWindow();
+  autoUpdate.start();
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
@@ -768,3 +783,4 @@ function openPathInApp(p) {
 platform.registerFileOpen(app, isDocPath, openPathInApp);
 
 app.on('window-all-closed', () => { if (platform.quitOnAllWindowsClosed) app.quit(); });
+app.on('will-quit', () => autoUpdate.stop());

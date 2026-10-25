@@ -103,7 +103,8 @@ function nodeToMd(node, listCtx) {
     case 'OL': {
       const ordered = tag === 'OL';
       // marked 渲染的 <ol> 不带 start 属性，默认从 1 开始
-      const startAttr = parseInt(el.getAttribute('start') || '1', 10) || 1;
+      const parsedStart = Number(el.getAttribute('start') ?? 1);
+      const startAttr = Number.isInteger(parsedStart) && parsedStart >= 0 ? parsedStart : 1;
       const items = [...el.children].filter(c => c.tagName === 'LI');
       const lines = [];
       items.forEach((li, i) => {
@@ -124,9 +125,9 @@ function nodeToMd(node, listCtx) {
     }
 
     case 'IMG': {
-      const src = el.getAttribute('src') || '';
+      const src = el.getAttribute('data-qingmo-image') || el.getAttribute('src') || '';
       const alt = el.getAttribute('alt') || '';
-      return '![' + alt + '](' + src + ')';
+      return '![' + alt.replace(/[\[\]]/g, '') + '](<' + src.replace(/</g, '%3C').replace(/>/g, '%3E') + '>)';
     }
 
     case 'TABLE':

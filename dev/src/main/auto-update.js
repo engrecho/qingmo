@@ -1,186 +1,134 @@
-/**
- * 自动更新（Windows）
- *
- * 走 electron-updater 的 autoUpdater：
- *   检查 → 下载 → 静默安装 → 重启
- *
- * ⚠ 三个前提，缺一个就静默失败：
- *
- *   1. **必须是 NSIS 安装版**
- *      portable（免安装）版没有升级通道，electron-updater 会直接报错。
- *      所以要先判断自己是哪种版本 —— 看 process.env.PORTABLE_EXECUTABLE_FILE，
- *      electron-builder 打 portable 时会注入这个环境变量。
- *
- *   2. **Release 上必须有 latest.yml**
- *      electron-updater 不是去翻 Release 的资源列表，而是去读 Release 里的
- *      `latest.yml`，里面记着版本号、文件名、sha512。
- *      没有这个文件 → 检查直接失败。
- *      （所以发布脚本必须把 latest.yml 一起传上去）
- *
- *   3. **文件名必须和 latest.yml 里一致**
- *      latest.yml 里的 path 是 electron-builder 生成时的原始文件名。
- *      发布脚本如果把资源改名了，下载就会 404。
- *      （已在 package.json 里用 artifactName 固定成 ASCII 名）
- *
- * macOS 不做自动更新：需要 Apple Developer 证书 + 公证，
- * 否则 Gatekeeper 会拦下自动下载的 app（用户还得手动右键打开）。
- * mac 上只做「检查更新 + 引导下载」。
- */
-// 更新依赖只在实际更新时加载，避免更新组件故障阻止编辑器启动。
-let autoUpdater;
-function loadUpdater() {
-  if (!autoUpdater) autoUpdater = require('electron-updater').autoUpdater;
-  return autoUpdater;
-}
-const { app } = require('electron');
+// 查询官方 Release → 后台下载并校验 → 等待用户确认打开安装包。
+// 不在下载完成或应用退出时静默安装，也不强制退出正在编辑的应用。
 const path = require('path');
-const logger = require('./logger');
+const { compareVersion } = require('./version');
+const { downloadAsset, verifyFile } = require('./update-download');
 
-// 自动更新是「装完重启」，不是热更新 —— 单实例，否则两个进程抢同一个安装目录
-const gotLock = app.requestSingleInstanceLock();
+function createAutoUpdater({ app, checkRelease, fetch, openInstaller, onState = () => {}, onReady = () => {}, log = () => {}, timers = globalThis }) {
+  let info = {};
+  let status = { checking: false, available: false, downloading: false, ready: false, installing: false, progress: 0, error: '', version: '', phase: 'idle' };
+  let checking, downloading, installing, readyFile, readyAsset;
+  let started = false, stopped = false, startupTimer, intervalTimer, retryTimer;
+  const notified = new Set();
+  const state = () => ({ ...info, ...status, ok: info.ok === true && !status.error });
+  const emit = patch => {
+    status = { ...status, ...patch };
+    try { onState(state()); } catch (error) { log('更新状态通知失败', error.message); }
+    return state();
+  };
+  const currentVersion = () => app.getVersion();
+  const isPortable = () => !!process.env.PORTABLE_EXECUTABLE_FILE;
+  const enabled = () => app.isPackaged || !!process.env.QINGMO_FORCE_UPDATE;
 
-// 开发模式（未打包）下 electron-updater 会在 app.getAppPath() 下找
-// dev-app-update.yml。正常 `npm start`（electron .）时 getAppPath() 就是 dev/，
-// 但跑 scripts/ 下的测试脚本时是 dev/scripts/ —— 所以显式指到 dev/ 根目录。
-
-
-let updateState = {
-  checking: false,
-  available: false,
-  downloading: false,
-  progress: 0,
-  error: '',
-  version: ''
-};
-
-function isPortable() {
-  return !!process.env.PORTABLE_EXECUTABLE_FILE;
-}
-
-function log(...a) { logger.info('[自动更新]', ...a); }
-
-/**
- * 检查更新。
- *
- * @param {boolean} silent 静默模式（启动时自动检查）—— 出错不打扰用户
- * @returns {Promise<object>} 状态
- */
-async function check(silent) {
-  if (updateState.checking) return updateState;
-  if (isPortable()) {
-    return {
-      ...updateState,
-      error: '便携版不支持自动更新',
-      reason: 'portable'
-    };
-  }
-  // ⚠ 开发模式（未打包）下 electron-updater 会直接跳过检查：
-  //   "Skip checkForUpdates because application is not packed"
-  //   这时 checkForUpdates() 什么都不返回 —— 之前代码把它当成「已是最新」，
-  //   用户会以为检查过了，其实根本没查。要如实说明。
-  if (!app.isPackaged && !process.env.QINGMO_FORCE_UPDATE) {
-    return {
-      ...updateState,
-      error: '开发模式不检查更新',
-      reason: 'dev-mode'
-    };
-  }
-
-  updateState.checking = true;
-  updateState.error = '';
-  try {
-    loadUpdater();
-    autoUpdater.autoDownload = false;          // 只查不下载，等用户点
-    autoUpdater.autoInstallOnAppQuit = true;   // 用户点了「稍后」→ 退出时自动装
-    autoUpdater.allowPrerelease = false;
-
-    // 开发模式（未打包）：强制走真实配置，才能真的连上 GitHub 验证。
-    //
-    // dev-app-update.yml 的位置：electron-updater 默认在 app.getAppPath() 下找，
-    // 正常 `npm start`（electron .）时就是 dev/ ✓；
-    // 但跑 scripts/ 下的脚本时 getAppPath() 是 dev/scripts/ —— 所以显式指过去。
-    if (!app.isPackaged) {
-      autoUpdater.forceDevUpdateConfig = true;
+  function check() {
+    if (checking) return checking;
+    if (downloading || installing) return Promise.resolve(state());
+    if (!enabled()) {
+      info = { ok: false, current: currentVersion(), reason: 'dev-mode' };
+      return Promise.resolve(emit({ error: '开发模式不自动检查更新', phase: 'idle' }));
+    }
+    checking = (async () => {
+      emit({ checking: true, error: '', phase: 'checking' });
       try {
-        autoUpdater.devUpdateConfigPath = path.join(__dirname, '..', 'dev-app-update.yml');
-      } catch (e) { /* 老版本没这个属性，忽略 */ }
-      log('开发模式，使用 dev-app-update.yml', {
-        path: autoUpdater.devUpdateConfigPath,
-        exists: require('fs').existsSync(autoUpdater.devUpdateConfigPath || '')
-      });
-    }
+        const result = await checkRelease();
+        if (!result.ok) throw new Error(result.error || '检查更新失败');
+        if (result.degraded && status.ready && readyAsset && result.latest === status.version) {
+          info = { ...info, ...result, hasUpdate: true, platformReady: true, match: readyAsset };
+          emit({ phase: 'ready' });
+          return state();
+        }
+        const available = !!result.hasUpdate && compareVersion(result.latest, currentVersion()) > 0;
+        const same = readyAsset && result.match && readyAsset.digest === result.match.digest && readyAsset.name === result.match.name;
+        info = result;
+        if (!same) { readyFile = null; readyAsset = null; }
+        emit({ available, version: available ? result.latest : '', ready: available && !!same, progress: same ? 100 : 0, phase: available ? (same ? 'ready' : 'available') : 'idle' });
+      } catch (error) {
+        // 保留已校验的安装包，网络暂时失败不影响稍后安装。
+        emit({ error: error.message, phase: status.ready ? 'ready' : 'error' });
+        log('更新检查失败', error.message);
+      } finally { emit({ checking: false }); }
+      return state();
+    })().finally(() => { checking = null; });
+    return checking;
+  }
 
-    const result = await autoUpdater.checkForUpdates();
-    if (!result || !result.updateInfo) {
-      // electron-updater 在某些情况下会返回空 —— 别当成「已是最新」
-      updateState.error = '更新服务没有返回版本信息';
-      log('检查结果为空');
-      return { ...updateState };
-    }
-    const info = result.updateInfo;
-    if (info && info.version) {
-      updateState.available = true;
-      updateState.version = info.version;
-      log('发现新版本', { from: currentVersion(), to: info.version });
-    } else {
-      updateState.available = false;
-      log('已是最新', { version: currentVersion() });
-    }
-    return { ...updateState };
-  } catch (e) {
-    // 静默模式下的错误只记日志，不弹窗
-    updateState.error = e && e.message ? e.message : String(e);
-    log('检查失败', { message: updateState.error, code: e && e.code });
-    if (!silent) {
-      // 常见原因：Release 里没有 latest.yml（发布脚本漏传）
-      if (/latest\.yml|HttpError|404|not found/i.test(updateState.error)) {
-        updateState.error += '（可能是 Release 缺少 latest.yml）';
+  function download() {
+    if (downloading) return downloading;
+    downloading = (async () => {
+      if (!status.available) await check();
+      if (!status.available || !info.match) return { ok: false, error: status.error || '没有可下载的更新' };
+      const version = status.version, asset = { ...info.match };
+      emit({ downloading: true, ready: false, progress: 0, error: '', phase: 'downloading' });
+      try {
+        const file = await downloadAsset({ asset, version, directory: path.join(app.getPath('userData'), 'updates'), fetch, onProgress: progress => { if (progress !== status.progress) emit({ progress }); } });
+        readyFile = file; readyAsset = asset;
+        emit({ downloading: false, ready: true, progress: 100, phase: 'ready' });
+        const key = version + ':' + asset.digest;
+        if (!stopped && !notified.has(key)) {
+          notified.add(key);
+          Promise.resolve().then(() => onReady(state())).catch(error => log('安装提示失败', error.message));
+        }
+        return { ok: true, ...state() };
+      } catch (error) {
+        readyFile = null; readyAsset = null;
+        emit({ downloading: false, ready: false, error: error.message, phase: 'error' });
+        log('更新下载失败', error.message);
+        scheduleRetry();
+        return { ok: false, ...state() };
       }
-    }
-    return { ...updateState };
-  } finally {
-    updateState.checking = false;
+    })().finally(() => { downloading = null; });
+    return downloading;
   }
-}
 
-/** 下载并安装 */
-async function downloadAndInstall() {
-  if (!updateState.available) {
-    const r = await check(false);
-    if (!r.available) return { ok: false, error: r.error || '没有可安装的新版本' };
+  function scheduleRetry() {
+    if (!started || stopped || retryTimer) return;
+    retryTimer = timers.setTimeout(() => { retryTimer = null; void checkAndDownload(); }, 15 * 60 * 1000);
+    retryTimer?.unref?.();
   }
-  try {
-    updateState.downloading = true;
-    autoUpdater.on('download-progress', (p) => {
-      updateState.progress = p && p.percent ? Math.round(p.percent) : 0;
-    });
-    autoUpdater.on('update-downloaded', () => {
-      log('下载完成，准备安装');
-      updateState.downloading = false;
-      // 立刻退出并安装
-      autoUpdater.quitAndInstall(false, true);
-    });
-    await autoUpdater.downloadUpdate();
-    return { ok: true, downloading: true };
-  } catch (e) {
-    updateState.downloading = false;
-    updateState.error = e && e.message ? e.message : String(e);
-    log('下载失败', { message: updateState.error });
-    return { ok: false, error: updateState.error };
+
+  async function checkAndDownload() {
+    await check();
+    if (status.error || (info.newerExists && !info.platformReady)) scheduleRetry();
+    if (status.available && !status.ready && !status.error) void download();
+    return state();
   }
-}
 
-function currentVersion() {
-  try { return app.getVersion(); } catch (e) { return '?'; }
-}
+  function install() {
+    if (installing) return installing;
+    installing = (async () => {
+      if (!status.ready || !readyFile || !readyAsset) return { ok: false, error: '安装包尚未下载完成' };
+      emit({ installing: true });
+      try {
+        if (!await verifyFile(readyFile, readyAsset)) {
+          readyFile = null; readyAsset = null;
+          emit({ ready: false, progress: 0, phase: 'error' });
+          throw new Error('安装包已变更或丢失，请重新下载');
+        }
+        const error = await openInstaller(readyFile);
+        if (error) throw new Error(error);
+        return { ok: true };
+      } catch (error) {
+        emit({ error: error.message });
+        return { ok: false, error: error.message };
+      } finally { emit({ installing: false }); }
+    })().finally(() => { installing = null; });
+    return installing;
+  }
 
-/** 装好后重启 */
-function onUpdateDownloaded() {
-  logger.info('自动更新：下载完成，退出并安装');
+  function start() {
+    if (started || !enabled()) return;
+    started = true; stopped = false;
+    startupTimer = timers.setTimeout(() => { void checkAndDownload(); }, 10000);
+    intervalTimer = timers.setInterval(() => { void checkAndDownload(); }, 6 * 60 * 60 * 1000);
+    startupTimer?.unref?.(); intervalTimer?.unref?.();
+  }
+  function stop() {
+    stopped = true;
+    timers.clearTimeout(startupTimer); timers.clearInterval(intervalTimer);
+    if (retryTimer) timers.clearTimeout(retryTimer);
+    retryTimer = null;
+    started = false;
+  }
+  return { check, checkAndDownload, download, install, state, start, stop, currentVersion, isPortable };
 }
-
-module.exports = {
-  check, downloadAndInstall, isPortable, currentVersion,
-  state: () => ({ ...updateState }),
-  onUpdateDownloaded
-};
+module.exports = { createAutoUpdater };

@@ -11,6 +11,8 @@ import { searchKeymap } from '@codemirror/search';
 import { tags as t } from '@lezer/highlight';
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
+import { orderedListRange, renumberList } from './list-actions';
+import { imageHtml, loadLocalImages } from './local-images';
 import { splitBlocks, elementToMarkdown, annotateBlocks } from './live-edit';
 import { planBlockAfter, coveringEmphasis, findEmphasisAt } from './editor-core';
 import { planEnter, planBackspace, planTab, parseTableRow, isTableDivider, makeTableRow, parseListItem } from './editor-keys';
@@ -233,7 +235,8 @@ function renderPreview(force) {
   const md = view.state.doc.toString();
   try {
     const raw = marked.parse(md);
-    previewEl.innerHTML = DOMPurify.sanitize(raw, { USE_PROFILES: { html: true } });
+    previewEl.innerHTML = imageHtml(raw, html => DOMPurify.sanitize(html, { USE_PROFILES: { html: true } }));
+    void loadLocalImages(previewEl, currentPath, (source, doc) => window.api.readImage(source, doc));
     previewEl.querySelectorAll("input[type=checkbox]").forEach(cb => { cb.disabled = !liveEdit; });
 
     // 建立「预览区顶层元素 ↔ 源码 block」映射，供直接编辑时按区间回写
@@ -300,17 +303,47 @@ previewEl.addEventListener('focusout', () => {
 let suppressLiveInput = false;
 /** 记录回写前预览区各 block 的文本，用于判断是哪个被改了 */
 let blockTexts = [];
+let blockElements = [];
 
-function snapshotBlockTexts() {
-  blockTexts = [...previewEl.children].map(el => el.textContent);
+function previewSignature(element) {
+  const copy = element.cloneNode(true);
+  copy.querySelectorAll('img[data-qingmo-image]').forEach(image => { image.removeAttribute('src'); image.removeAttribute('title'); });
+  return copy.innerHTML;
 }
+function snapshotBlockTexts() {
+  blockElements = [...previewEl.children];
+  blockTexts = blockElements.map(previewSignature);
+}
+
+// 浏览器拆分/退出列表时顶层块数可能变化，同时保留未改动块的 Markdown。
+function writeBackPreviewStructure() {
+  const old = blockMap.blocks.filter(block => !block.skip);
+  const elements = [...previewEl.children];
+  let offset = 0;
+  const blocks = elements.map((element, index) => {
+    const previous = blockElements.indexOf(element);
+    const unchanged = previous >= 0 && previewSignature(element) === blockTexts[previous] && old[previous];
+    const markdown = (unchanged ? old[previous].raw : elementToMarkdown(element, 'paragraph')).replace(/\n+$/, '');
+    const raw = markdown + (index < elements.length - 1 ? '\n\n' : '');
+    const block = { start: offset, end: offset + raw.length, raw, skip: false, token: { type: 'paragraph' } };
+    offset += raw.length;
+    return block;
+  });
+  suppressLiveInput = true;
+  view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: blocks.map(block => block.raw).join('') } });
+  suppressLiveInput = false;
+  blockMap = { blocks, all: [] };
+  annotateBlocks(previewEl, blocks.length);
+  snapshotBlockTexts();
+}
+
 
 /** 找到内容发生变化的 block 下标；返回 -1 表示没变 */
 function changedBlockIndex() {
   const kids = [...previewEl.children];
   if (kids.length !== blockTexts.length) return -1;
   for (let i = 0; i < kids.length; i++) {
-    if (kids[i].textContent !== blockTexts[i]) return i;
+    if (previewSignature(kids[i]) !== blockTexts[i]) return i;
   }
   return -1;
 }
@@ -343,8 +376,8 @@ function writeBackBlock(idx, caretOffset) {
   }
 
   // 原来 raw 末尾的两个换行是块间分隔符，不要写回去，否则会产生空行堆积
-  const trailing = /\n{2,}$/.exec(target.raw);
-  const tailNl = trailing ? '\n\n' : '';
+  const trailing = /\n+$/.exec(target.raw);
+  const tailNl = trailing ? trailing[0] : '';
   if (!newMd) {
     // 整个块被删空了 → 连同它后面的分隔空行一起删掉
     newMd = '';
@@ -361,6 +394,8 @@ function writeBackBlock(idx, caretOffset) {
     selection: { anchor: target.start + newMd.length }
   });
   suppressLiveInput = false;
+  blockMap = splitBlocks(view.state.doc.toString());
+  annotateBlocks(previewEl, blockMap.blocks.filter(block => !block.skip).length);
 
   scheduleSidebarSync();
   saveDraft();
@@ -375,62 +410,35 @@ previewEl.addEventListener('paste', (e) => {
   document.execCommand('insertText', false, text);
 });
 
-/** 禁止在预览区按 Enter 产生 <div>（浏览器默认行为），改成插入换行 */
+/** 预览列表沿用浏览器的 LI 拆分、空项退出和嵌套列表退级。 */
 previewEl.addEventListener('keydown', (e) => {
-  if (!liveEdit) return;
-
-  // 代码块内允许正常的多行输入
-  const inCode = e.target.closest && e.target.closest('pre');
-
+  if (!liveEdit || e.isComposing || e.keyCode === 229) return;
+  const selection = window.getSelection();
+  const anchor = selection?.anchorNode;
+  const element = anchor?.nodeType === 1 ? anchor : anchor?.parentElement;
+  const inCode = element?.closest('pre');
   if (e.key === 'Enter' && !e.shiftKey && !inCode) {
-    // Markdown 里单个换行不换行，所以按 Shift+Enter 才是软换行。
-    // 普通 Enter 在这里也应该只是插入换行（因为块的边界由空行决定），
-    // 用 execCommand 让浏览器按当前位置拆分，再由 input 事件统一回写。
+    if (element?.closest('li')) {
+      e.preventDefault();
+      document.execCommand('insertParagraph');
+      return;
+    }
     e.preventDefault();
     document.execCommand('insertLineBreak');
     return;
   }
 
-  // Backspace 在块首：把当前块并回上一块
-  if (e.key === 'Backspace') {
-    const sel = window.getSelection();
-    if (sel && sel.isCollapsed && sel.anchorNode) {
-      const el = sel.anchorNode.nodeType === 1 ? sel.anchorNode : sel.anchorNode.parentElement;
-      const top = el && el.closest ? el.closest('[data-block]') : null;
-      if (top && top.dataset.block !== undefined) {
-        const idx = Number(top.dataset.block);
-        // 光标确实在块的最开头（前面没有可删的字符）
-        const r = document.createRange();
-        r.setStart(top, 0);
-        r.setEnd(sel.anchorNode, sel.anchorOffset);
-        const atStart = r.toString().length === 0;
-        if (atStart && idx > 0) {
-          e.preventDefault();
-          const prev = [...previewEl.children][idx - 1];
-          if (prev) {
-            prev.focus();
-            const r2 = document.createRange();
-            r2.selectNodeContents(prev);
-            r2.collapse(false);
-            const s = window.getSelection();
-            s.removeAllRanges();
-            s.addRange(r2);
-            // 合并：把当前块的内容追加到上一块末尾
-            const merged = prev.cloneNode(true);
-            previewEl.replaceChild(top, merged);
-            top.remove();
-            writeBackBlock(idx - 1);
-          }
-        }
-      }
-    }
-  }
+  // Backspace 保留浏览器原生的列表退级和块合并，input 统一回写。
+
 });
 
 previewEl.addEventListener('input', () => {
   if (!liveEdit || suppressLiveInput) return;
   const idx = changedBlockIndex();
-  if (idx < 0) return;
+  if (idx < 0 || previewEl.children.length !== blockMap.blocks.filter(block => !block.skip).length) {
+    writeBackPreviewStructure();
+    return;
+  }
   writeBackBlock(idx);
   snapshotBlockTexts();
 });
@@ -656,6 +664,7 @@ async function saveTab(t, saveAs = false) {
   renderSidebar();
   window.api.rebuildMenu();
   persistSession();
+  if (t.id === activeId) { currentPath = t.path; renderPreview(true); }
   return true;
 }
 
@@ -1091,38 +1100,156 @@ function switchList(kind) {
   view.focus();
 }
 
-/** 清除所有格式：把选区/当前行里的 markdown 标记全去掉 */
-function clearFormat() {
-  const { from, to } = getSel();
-  const startLine = view.state.doc.lineAt(from);
-  const endLine = view.state.doc.lineAt(to);
-
-  // 逐行剥掉：标题标记、引用、列表标记、强调、删除线、行内代码
-  const stripLine = (line) => line
-    .replace(/^(\s*)#{1,6}\s+/, '$1')          // 标题
-    .replace(/^(\s*)>\s?/, '$1')              // 引用
-    .replace(/^(\s*)(?:[-*+]\s+(?:\[[ xX]\]\s+)?|\d+[.)]\s+)/, '$1')  // 列表
-    .replace(/~~([^~]+)~~/g, '$1')            // 删除线
-    .replace(/\*\*([^*]+)\*\*/g, '$1')        // 粗体
-    .replace(/\*([^*]+)\*/g, '$1')            // 斜体
-    .replace(/`([^`]+)`/g, '$1')              // 行内代码
-    .replace(/\[([^\]]*)\]\(([^)]*)\)/g, '$1') // 链接
-    .replace(/!\[([^\]]*)\]\(([^)]*)\)/g, '$1');// 图片
-
-  // 同样是整段取出再整段写回 —— 逐行 change 会在行长变化后位置漂移
-  const raw = view.state.sliceDoc(startLine.from, endLine.to);
-  const newText = raw.split('\n').map(stripLine).join('\n');
-
-  if (newText === raw) {
-    toast('没有可清除的格式');
-    return;
+/** 将预览光标定位到源码的当前行，工具栏与快捷键共用。 */
+function syncPreviewCursor() {
+  const selection = window.getSelection();
+  const node = selection?.anchorNode;
+  if (!node || !previewEl.contains(node)) return false;
+  const element = node.nodeType === 1 ? node : node.parentElement;
+  const top = element.closest('[data-block]');
+  if (!top) return false;
+  const block = blockMap.blocks.filter(item => !item.skip)[Number(top.dataset.block)];
+  if (!block) return false;
+  const lines = block.raw.split('\n');
+  const item = element.closest('li');
+  let lineIndex = 0;
+  if (item) {
+    const itemIndex = [...top.querySelectorAll('li')].indexOf(item);
+    const positions = lines.map((line, index) => /^\s*(?:[-*+](?:\s+|$)|\d+[.)](?:\s+|$))/.test(line) ? index : -1).filter(index => index >= 0);
+    lineIndex = positions[Math.max(0, itemIndex)] || 0;
+  } else {
+    const range = document.createRange(); range.selectNodeContents(top); range.setEnd(node, selection.anchorOffset);
+    lineIndex = Math.min(lines.length - 1, range.toString().split('\n').length - 1);
   }
-  view.dispatch({
-    changes: { from: startLine.from, to: endLine.to, insert: newText },
-    selection: { anchor: startLine.from }
-  });
-  view.focus();
+  const position = block.start + lines.slice(0, lineIndex).reduce((sum, line) => sum + line.length + 1, 0);
+  view.dispatch({ selection: { anchor: Math.min(position, view.state.doc.length) } });
+  return true;
 }
+
+function focusPreviewSource(position) {
+  renderPreview(true); snapshotBlockTexts();
+  const visible = blockMap.blocks.filter(block => !block.skip);
+  const index = visible.findIndex(block => position >= block.start && position <= block.end);
+  const element = previewEl.children[Math.max(0, index)];
+  if (!element) return;
+  previewEl.focus();
+  const range = document.createRange(); range.selectNodeContents(element); range.collapse(true);
+  const selection = window.getSelection(); selection.removeAllRanges(); selection.addRange(range);
+}
+
+/** 一键清除当前行的块级和行内格式，保留正文。 */
+function clearFormat() {
+  const inPreview = syncPreviewCursor();
+  const line = view.state.doc.lineAt(view.state.selection.main.head);
+  let body = line.text.trimStart();
+  for (;;) {
+    const stripped = body.replace(/^(\s*)(?:#{1,6}\s+|>\s?|[-*+](?:\s+|$)(?:\[[ xX]\]\s*)?|\d+[.)](?:\s+|$))/, '$1');
+    if (stripped === body) break;
+    body = stripped;
+  }
+  const template = document.createElement('template');
+  template.innerHTML = DOMPurify.sanitize(marked.parseInline(body));
+  template.content.querySelectorAll('img').forEach(image => image.replaceWith(document.createTextNode(image.getAttribute('alt') || '')));
+  template.content.querySelectorAll('br').forEach(br => br.replaceWith(document.createTextNode(' ')));
+  const plain = template.content.textContent;
+  if (plain === line.text) { toast('当前行没有可清除的格式'); return; }
+  view.dispatch({ changes: { from: line.from, to: line.to, insert: plain }, selection: { anchor: line.from } });
+  if (inPreview) focusPreviewSource(line.from); else view.focus();
+  toast('已清除当前行格式');
+}
+
+function chooseListStart(context) {
+  const inPreview = context?.inPreview ?? syncPreviewCursor();
+  if (context?.position != null) view.dispatch({ selection: { anchor: context.position } });
+  const position = view.state.selection.main.head;
+  const list = orderedListRange(view.state.doc.toString(), position);
+  if (!list) { toast('请先将光标放在有序列表项中'); return; }
+  document.getElementById('listStartDialog')?.remove();
+  const dialog = document.createElement('div');
+  dialog.id = 'listStartDialog'; dialog.className = 'modal-mask show';
+  dialog.innerHTML = `<div class="modal"><div class="modal-head"><span class="modal-title">有序列表编号</span></div>
+    <div class="modal-body">
+      <label><input type="radio" name="list-start" value="reset" checked> 从 1 重新编号</label><br><br>
+      <label><input type="radio" name="list-start" value="custom"> 从指定编号开始</label>
+      <input class="img-input" id="listStartNumber" type="number" min="0" max="999999999" value="${list.start}" aria-label="起始编号">
+    </div><div class="modal-foot"><button class="ub-btn" data-act="cancel">取消</button><button class="ub-btn primary" data-act="apply">应用</button></div></div>`;
+  const input = dialog.querySelector('#listStartNumber');
+  input.addEventListener('input', () => { dialog.querySelector('[value="custom"]').checked = true; });
+  dialog.addEventListener('click', event => {
+    const action = event.target.closest('[data-act]')?.dataset.act;
+    if (action === 'cancel') dialog.remove();
+    if (action !== 'apply') return;
+    try {
+      const start = dialog.querySelector('[name="list-start"]:checked').value === 'reset' ? 1 : Number(input.value);
+      if (!input.value.trim() && start !== 1) throw new Error('请填写起始编号');
+      const text = renumberList(list, start);
+      view.dispatch({ changes: { from: list.from, to: list.to, insert: text }, selection: { anchor: list.from } });
+      dialog.remove();
+      if (inPreview) focusPreviewSource(list.from); else view.focus();
+    } catch (error) { toast(error.message); }
+  });
+  dialog.addEventListener('keydown', event => { if (event.key === 'Escape') dialog.remove(); if (event.key === 'Enter') dialog.querySelector('[data-act="apply"]').click(); });
+  document.body.appendChild(dialog);
+}
+
+// 保留原生列表标记，通过标记区域命中检测提供点击操作，不向可编辑内容插入控件。
+const markerMeasure = document.createElement('canvas').getContext('2d');
+function previewNumberAt(event) {
+  for (const item of [...previewEl.querySelectorAll('ol > li')].reverse()) {
+    const box = item.getBoundingClientRect();
+    const style = getComputedStyle(item);
+    const height = parseFloat(style.lineHeight) || parseFloat(style.fontSize) * 1.85;
+    if (event.clientY < box.top || event.clientY > Math.min(box.bottom, box.top + height)) continue;
+    const start = Number(item.parentElement.getAttribute('start') ?? 1);
+    const index = [...item.parentElement.children].filter(element => element.tagName === 'LI').indexOf(item);
+    markerMeasure.font = style.font || `${style.fontSize} ${style.fontFamily}`;
+    const width = markerMeasure.measureText(`${start + index}.`).width + 12;
+    if (event.clientX < box.left && event.clientX >= box.left - width) return item;
+  }
+  return null;
+}
+previewEl.addEventListener('mousedown', event => {
+  if (event.button !== 0 || event.shiftKey || event.metaKey || event.ctrlKey || event.altKey) return;
+  const item = previewNumberAt(event);
+  if (!item) return;
+  event.preventDefault();
+  const range = document.createRange(); range.selectNodeContents(item); range.collapse(true);
+  const selection = window.getSelection(); selection.removeAllRanges(); selection.addRange(range);
+  syncPreviewCursor();
+  chooseListStart({ inPreview: true, position: view.state.selection.main.head });
+});
+previewEl.addEventListener('mousemove', event => {
+  const overNumber = !!previewNumberAt(event);
+  previewEl.style.cursor = overNumber ? 'pointer' : '';
+  previewEl.title = overNumber ? '点击序号，选择是否从 1 开始' : '';
+});
+previewEl.addEventListener('mouseleave', () => { previewEl.style.cursor = ''; previewEl.title = ''; });
+
+// 源码编辑区同样可以直接点击行首数字，正文点击仍正常定位光标。
+function sourceNumberAt(event) {
+  const position = view.posAtCoords({ x: event.clientX, y: event.clientY });
+  if (position == null) return null;
+  const line = view.state.doc.lineAt(position);
+  const match = /^(\s*)(\d+[.)])(?=\s|$)/.exec(line.text);
+  if (!match) return null;
+  const from = line.from + match[1].length;
+  const to = from + match[2].length;
+  const left = view.coordsAtPos(from), right = view.coordsAtPos(to);
+  if (!left || !right || event.clientY < left.top || event.clientY > left.bottom || event.clientX < left.left || event.clientX > right.left) return null;
+  return from;
+}
+view.contentDOM.addEventListener('mousedown', event => {
+  if (event.button !== 0 || event.shiftKey || event.metaKey || event.ctrlKey || event.altKey || view.composing) return;
+  const position = sourceNumberAt(event);
+  if (position == null) return;
+  event.preventDefault();
+  event.stopPropagation();
+  chooseListStart({ inPreview: false, position });
+}, true);
+view.contentDOM.addEventListener('mousemove', event => {
+  view.contentDOM.style.cursor = sourceNumberAt(event) == null ? '' : 'pointer';
+});
+view.contentDOM.addEventListener('mouseleave', () => { view.contentDOM.style.cursor = ''; });
 
 function insertHr() {
   // 分隔线是块级内容，必须另起一块。
@@ -1192,8 +1319,8 @@ function insertImage() {
     const s = String(src || '').trim();
     if (!s) { toast('请填写图片网址'); return; }
     const safeAlt = String(alt || '图片').replace(/[\[\]]/g, '');
-    const md = `![${safeAlt}](${s})`;
-    replaceSelection(md, md.length - s.length - 1);
+    const md = `![${safeAlt}](<${s.replace(/</g, '%3C').replace(/>/g, '%3E')}>)`;
+    replaceSelection(md, md.length);
     close();
     toast('已插入图片');
   };
@@ -1604,6 +1731,7 @@ const COMMANDS = {
   'fmt:strike': () => wrap("~~", "~~"),
   'fmt:code': () => wrap("`", "`"),
   'fmt:clear': clearFormat,
+  'list:start': chooseListStart,
   'fmt:h1': () => heading(1),
   'fmt:h2': () => heading(2),
   'fmt:h3': () => heading(3),
@@ -1624,7 +1752,7 @@ function run(cmd) {
   if (fn) fn();
 }
 
-function exportHtml() {
+async function exportHtml() {
   const css = `
     :root { color-scheme: light dark }
     * { box-sizing: border-box }
@@ -1692,11 +1820,15 @@ function exportHtml() {
       li::marker { color: #79828f }
     }`;
   const title = currentPath ? currentPath.split(/[\\/]/).pop() : 'untitled';
+  const body = document.createElement('div');
+  body.innerHTML = imageHtml(marked.parse(view.state.doc.toString()), html => DOMPurify.sanitize(html));
+  await loadLocalImages(body, currentPath, (source, doc) => window.api.readImage(source, doc));
+  body.querySelectorAll('[data-qingmo-image]').forEach(image => image.removeAttribute('data-qingmo-image'));
   const html = `<!DOCTYPE html>
 <html lang="zh-CN"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${escapeHtml(title)}</title><style>${css}</style></head>
-<body>${DOMPurify.sanitize(marked.parse(view.state.doc.toString()))}</body></html>`;
+<body>${body.innerHTML}</body></html>`;
   window.api.exportHtml(html, title.replace(/\.md$/i, '')).then(r => {
     if (r) toast("已导出 HTML");
   });
@@ -1761,6 +1893,10 @@ function toast(msg) {
 })();
 
 /* ============ 事件绑定 ============ */
+document.getElementById('titlebar').addEventListener('mousedown', event => {
+  const command = event.target.closest('[data-cmd]')?.dataset.cmd;
+  if (command === 'fmt:clear') { syncPreviewCursor(); event.preventDefault(); }
+});
 document.getElementById("titlebar").addEventListener("click", e => {
   const btn = e.target.closest('[data-cmd]');
   if (btn) { run(btn.dataset.cmd); return; }
@@ -1839,6 +1975,8 @@ window.addEventListener("keydown", e => {
   // 按住 Shift 时 e.key 会变成符号（Shift+7 是 '&'、Shift+8 是 '*'、Shift+9 是 '('），
   // 用 e.key 判断会全部落空。e.code 恒为 'Digit7' 这种，不受 Shift 影响。
   const digit = /^Digit([1-9])$/.exec(e.code || '');
+
+  if (mod && e.code === 'Backslash' && !e.altKey && !e.isComposing) { e.preventDefault(); clearFormat(); return; }
 
   // ---------- 文件 ----------
   if (mod && !e.shiftKey && !e.altKey && k === "n") {
@@ -2018,10 +2156,7 @@ async function boot() {
   if (liveBtn) liveBtn.classList.toggle('active', liveEdit);
   view.focus();
 
-  // 延迟检查更新（等界面就绪，不阻塞启动）
-  setTimeout(() => {
-    if (typeof checkUpdate === 'function') checkUpdate();
-  }, 2500);
+  // 自动更新调度由主进程负责，两个 renderer bundle 不再重复触发。
 }
 
 // designPreview 需在 boot 完成后执行，否则两者会互相覆盖 tab 状态

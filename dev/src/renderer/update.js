@@ -2,97 +2,80 @@
    版本更新检测
    ============================================ */
 
-const UPDATE_KEY = 'qingmo.update.lastCheck';
-const UPDATE_DAY = 24 * 60 * 60 * 1000;   // 24 小时检查一次
+let updateInfo = null;
+let updateBanner = null;
+let dismissedUpdateKey = null;
+const updateKey = state => `${state.version || state.latest}:${state.ready ? 'ready' : 'download'}`;
 
-let updateInfo = null;      // 最近一次检查结果
-let updateBanner = null;    // 顶部提示条元素
-
-/** 判断是否该检查（距上次检查超过 24 小时） */
-function shouldCheckUpdate() {
-  try {
-    const last = parseInt(localStorage.getItem(UPDATE_KEY) || '0', 10);
-    return Date.now() - last > UPDATE_DAY;
-  } catch (e) { return true; }
-}
-
-function markChecked() {
-  try { localStorage.setItem(UPDATE_KEY, String(Date.now())); } catch (e) {}
-}
-
-/** 检查更新 */
+// 主进程负责启动与周期检查。设置面板与菜单只触发同一流程。
 async function checkUpdate(force = false) {
-  if (!window.api || !window.api.checkUpdate) return null;
-  if (!force && !shouldCheckUpdate()) return updateInfo;
-
+  if (!window.api?.checkUpdate) return null;
   try {
-    const r = await window.api.checkUpdate();
-    markChecked();
-    updateInfo = r;
-    if (r && r.ok) {
-      if (r.hasUpdate) showUpdateBanner(r);
-      else hideUpdateBanner();
+    if (force) dismissedUpdateKey = null;
+    const result = await window.api.checkUpdate();
+    receiveUpdateState(result);
+    if (force) {
+      if (result.hasUpdate || result.newerExists) showUpdateDialog(result);
+      else if (!result.ok) toast('检查失败：' + (result.error || '更新服务暂不可用'));
+      else toast('已是最新版本 ' + result.current);
     }
-    return r;
-  } catch (e) {
-    updateInfo = { ok: false, error: e.message };
-    return updateInfo;
+    return result;
+  } catch (error) {
+    if (force) toast('检查失败：' + error.message);
+    return { ok: false, error: error.message };
   }
 }
+window.qingmoCheckUpdate = () => checkUpdate(true);
 
-/* 暴露给 app.js 的设置面板 ——
- * app.js 和 update.js 是两个独立 bundle，彼此看不见对方的内部函数，
- * 只能通过 window 搭桥。 */
-window.qingmoCheckUpdate = checkUpdate;
+function receiveUpdateState(state) {
+  if (!state) return;
+  updateInfo = state;
+  if ((state.hasUpdate || state.available) && dismissedUpdateKey !== updateKey(state)) showUpdateBanner(state);
+  else if (state.phase === 'idle' && !state.checking) hideUpdateBanner();
+  applyDialogState(state);
+}
+window.api.on('app:updateState', (_channel, state) => receiveUpdateState(state));
+if (window.api.autoState) window.api.autoState().then(receiveUpdateState).catch(() => {});
 
 /* ---------- 顶部提示条 ---------- */
 function showUpdateBanner(info) {
-  hideUpdateBanner();
-
-  // 当前平台没发对应资源时，措辞要诚实 ——
-  // 不能让用户以为点「前往下载」就能拿到本平台的包。
-  const canDownload = !!info.match;
-  let text;
-  if (canDownload) {
-    text = `发现新版本 <b>${info.latest}</b>（当前 ${info.current}）`;
-  } else if (info.degraded) {
-    // 降级模式：只拿到了版本号，不知道有没有本平台的包
-    text = `新版本 <b>${info.latest}</b> 可用（当前 ${info.current}）`;
-  } else {
-    text = `新版本 <b>${info.latest}</b> 已发布（当前 ${info.current}），`
-      + `<b>${info.platformName || '当前平台'}</b> 版暂未提供`;
+  let bar = updateBanner;
+  if (!bar) {
+    bar = document.createElement('div');
+    bar.className = 'update-bar';
+    bar.innerHTML = `<span class="ub-text"></span>
+      <button class="ub-btn primary" data-act="download"></button>
+      <button class="ub-btn" data-act="details">查看详情</button>
+      <button class="ub-btn" data-act="dismiss" title="暂时收起">×</button>`;
+    bar.addEventListener('click', async event => {
+      const action = event.target.closest('[data-act]')?.dataset.act;
+      if (action === 'details') showUpdateDialog(updateInfo);
+      if (action === 'dismiss') { dismissedUpdateKey = updateKey(updateInfo); hideUpdateBanner(); }
+      if (action === 'download') {
+        if (!updateInfo.match) { window.api.openExternal(updateInfo.releaseUrl); return; }
+        const button = bar.querySelector('[data-act="download"]');
+        button.disabled = true;
+        try {
+          const result = updateInfo.ready ? await window.api.installUpdate() : await window.api.autoUpdate();
+          if (!result.ok) toast(result.error || '更新失败，请重试');
+        } catch (error) { toast('更新失败：' + error.message); }
+        finally { button.disabled = false; }
+      }
+    });
+    document.body.appendChild(bar);
+    updateBanner = bar;
+    requestAnimationFrame(() => bar.classList.add('show'));
   }
-
-  const bar = document.createElement('div');
-  bar.className = 'update-bar';
-  bar.innerHTML = `
-    <span class="ub-icon"><svg viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M4 20h16"/></svg></span>
-    <span class="ub-text">${text}</span>
-    <button class="ub-btn primary" data-act="download">${canDownload ? '前往下载' : '查看发布页'}</button>
-    <button class="ub-btn" data-act="details">查看详情</button>
-    <button class="ub-btn icon" data-act="dismiss" title="忽略此版本">
-      <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>
-    </button>
-  `;
-
-  bar.addEventListener('click', e => {
-    const btn = e.target.closest('[data-act]');
-    if (!btn) return;
-    const act = btn.dataset.act;
-    if (act === 'download') {
-      // 有匹配资源就直接下载；没有就打开 release 页（里面有说明）
-      const url = (info.match && info.match.url) || info.releaseUrl;
-      window.api.openExternal(url);
-    } else if (act === 'details') {
-      showUpdateDialog(info);
-    } else if (act === 'dismiss') {
-      hideUpdateBanner();
-    }
-  });
-
-  document.body.appendChild(bar);
-  updateBanner = bar;
-  requestAnimationFrame(() => bar.classList.add('show'));
+  const version = info.version || info.latest;
+  bar.querySelector('.ub-text').textContent = info.ready
+    ? `轻墨 ${version} 已下载，可以安装`
+    : info.downloading ? `轻墨 ${version} 正在后台下载 ${info.progress}%`
+    : info.error ? `轻墨 ${version} 下载失败：${info.error}`
+    : info.match ? `发现轻墨 ${version}，准备后台下载`
+    : `新版本 ${version} 已发布，当前平台安装包暂不可用`;
+  const button = bar.querySelector('[data-act="download"]');
+  button.textContent = info.ready ? '打开安装包' : info.downloading ? '下载中…' : info.match ? '重试下载' : '查看发布页';
+  button.disabled = !!info.downloading || !!info.installing;
 }
 
 function hideUpdateBanner() {
@@ -108,15 +91,15 @@ function showUpdateDialog(info) {
   const old = document.getElementById('updateDialog');
   if (old) old.remove();
 
-  const assets = (info.assets || []).map(a => `
+  const assets = (info.assets || []).filter(a => /\.(exe|dmg|zip)$/i.test(a.name)).map(a => `
     <li>
       <span class="ua-name">${escapeHtml(a.name)}</span>
       <span class="ua-size">${(a.size / 1048576).toFixed(1)} MB</span>
       <button class="ub-btn" data-url="${escapeHtml(a.url)}">下载</button>
     </li>`).join('');
 
-  // 一键更新按钮：只在「当前平台有对应资源」且「不是便携版」时出现
-  const canAuto = !!info.match && info.platformReady !== false && !info.portable;
+  // 安装入口仅在当前平台存在更高版本的安装包时显示。
+  const canAuto = !!info.hasUpdate && !!info.match && info.platformReady !== false;
 
   const dlg = document.createElement('div');
   dlg.id = 'updateDialog';
@@ -147,7 +130,7 @@ function showUpdateDialog(info) {
       </div>
       <div class="modal-foot">
         <button class="ub-btn" data-act="close">稍后再说</button>
-        ${canAuto ? '<button class="ub-btn primary" data-act="auto">一键更新</button>' : ''}
+        ${canAuto ? '<button class="ub-btn primary" data-act="auto">下载更新</button>' : ''}
         <button class="ub-btn ${canAuto ? '' : 'primary'}" data-act="release">打开发布页</button>
       </div>
     </div>
@@ -166,55 +149,40 @@ function showUpdateDialog(info) {
   });
 
   document.body.appendChild(dlg);
+  applyDialogState(info);
   requestAnimationFrame(() => dlg.classList.add('show'));
 }
 
-/**
- * 一键更新：下载 → 静默安装 → 重启。
- *
- * 走的是 electron-updater，所以：
- *   · 只在 NSIS 安装版可用（便携版按钮根本不出现）
- *   · 依赖 Release 上有 latest.yml（发布脚本要传）
- *   · 装完会自动重启应用
- */
-async function startAutoUpdate(dlg, btn) {
-  const box = dlg.querySelector('#udProgress');
-  const fill = dlg.querySelector('#udpFill');
-  const text = dlg.querySelector('#udpText');
-  btn.disabled = true;
-  btn.textContent = '准备中…';
-  if (box) box.style.display = '';
+function applyDialogState(state) {
+  const dialog = document.getElementById('updateDialog');
+  if (!dialog) return;
+  const button = dialog.querySelector('[data-act="auto"]');
+  if (!button) return;
+  const box = dialog.querySelector('#udProgress');
+  const fill = dialog.querySelector('#udpFill');
+  const text = dialog.querySelector('#udpText');
+  box.style.display = '';
+  fill.style.width = (state.progress || 0) + '%';
+  text.textContent = state.error ? '更新失败：' + state.error
+    : state.ready ? '安装包已下载。请先保存文档，再打开安装包。'
+    : state.downloading ? `后台下载中 ${state.progress || 0}%`
+    : state.checking ? '正在检查更新…' : '准备下载更新…';
+  button.textContent = state.ready ? '打开安装包' : state.downloading ? '下载中…' : state.error ? '重试下载' : '下载更新';
+  button.disabled = !!state.downloading || !!state.installing;
+}
 
+async function startAutoUpdate(dlg, button) {
+  button.disabled = true;
   try {
-    const r = await window.api.autoUpdate();
-    if (!r || !r.ok) {
-      text.textContent = '无法自动更新：' + ((r && r.error) || '未知错误');
-      btn.disabled = false;
-      btn.textContent = '重试';
-      return;
+    const result = updateInfo?.ready ? await window.api.installUpdate() : await window.api.autoUpdate();
+    if (!result.ok) {
+      const text = dlg.querySelector('#udpText');
+      if (text) text.textContent = '更新失败：' + (result.error || '请重试');
     }
-    text.textContent = '下载中 0%';
-
-    // 轮询进度
-    const timer = setInterval(async () => {
-      try {
-        const s = await window.api.autoState();
-        if (s && s.downloading) {
-          text.textContent = `下载中 ${s.progress}%`;
-          if (fill) fill.style.width = s.progress + '%';
-        } else if (s && s.progress > 0 && !s.downloading) {
-          text.textContent = '下载完成，正在安装…';
-        }
-      } catch (err) { /* 忽略 */ }
-    }, 500);
-
-    // 下载完成后主进程会 quitAndInstall，界面到这里就结束了
-    setTimeout(() => clearInterval(timer), 10 * 60 * 1000);
-  } catch (e) {
-    text.textContent = '更新失败：' + (e && e.message);
-    btn.disabled = false;
-    btn.textContent = '重试';
-  }
+  } catch (error) {
+    const text = dlg.querySelector('#udpText');
+    if (text) text.textContent = '更新失败：' + error.message;
+  } finally { button.disabled = false; }
 }
 
 function escapeHtml(s) {
@@ -223,25 +191,7 @@ function escapeHtml(s) {
 }
 
 /* ---------- 菜单入口：帮助 → 检查更新 ---------- */
-window.api.on('app:checkUpdate', async () => {
-  const r = await checkUpdate(true);
-  if (!r) { toast('无法连接更新服务'); return; }
-  if (!r.ok) { toast('检查失败：' + (r.error || '未知错误')); return; }
-  if (r.hasUpdate) { showUpdateDialog(r); return; }
-  if (r.degraded && r.newerExists) {
-    // 降级模式：知道有新版但拿不到资源列表
-    toast(`新版本 ${r.latest} 可用，详细见发布页`);
-    showUpdateDialog(r);
-    return;
-  }
-  if (r.newerExists && !r.platformReady) {
-    // 有新版但当前平台还没发 —— 说清楚，别让用户白跑一趟
-    toast(`新版本 ${r.latest} 已发布，${r.platformName || '当前平台'}版暂未提供`);
-    showUpdateDialog(r);
-    return;
-  }
-  toast('已是最新版本 ' + r.current);
-});
+window.api.on('app:checkUpdate', () => checkUpdate(true));
 
 /* ---------- 关于对话框 ---------- */
 window.api.on('app:about', () => {

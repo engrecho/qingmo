@@ -9,6 +9,11 @@
  */
 module.exports = {
   id: 'base',
+  imagePaths: require('path'),
+
+  matchUpdateInstaller() { return null; },
+  openUpdateInstaller(shell, file) { return shell.openPath(file); },
+  updateInstallHint: '安装前请先保存正在编辑的文档。',
 
   /** BrowserWindow.titleBarStyle */
   titleBarStyle: 'default',
