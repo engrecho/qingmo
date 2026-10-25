@@ -1,3 +1,19 @@
+# 轻墨 QingMo v1.6.1
+
+## 启动问题修复
+
+- 修复文件关联 IPC 重复注册导致的主进程启动崩溃（Windows / macOS）。
+- 补齐并校验 electron-updater 运行依赖，更新组件延迟加载，避免依赖缺失阻止编辑器启动。
+- 修复 macOS 交叉打包的源码路径和运行依赖遗漏。
+- macOS 提供 Apple 芯片 / Intel 的 DMG 安装包与 ZIP 免安装包；Windows 提供 x64 安装版与便携版。
+
+## 验证
+
+- 启动回归测试、渲染构建、macOS 主进程启动和 10 项界面检查通过。
+- Windows 产物完成静态检查，未进行 Windows 实机运行验证。
+
+---
+
 # 轻墨 QingMo v1.5.1
 
 简洁轻量的跨平台 Markdown 编辑器 —— 左边写，右边即时看到成品。

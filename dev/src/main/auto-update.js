@@ -26,7 +26,12 @@
  * 否则 Gatekeeper 会拦下自动下载的 app（用户还得手动右键打开）。
  * mac 上只做「检查更新 + 引导下载」。
  */
-const { autoUpdater } = require('electron-updater');
+// 更新依赖只在实际更新时加载，避免更新组件故障阻止编辑器启动。
+let autoUpdater;
+function loadUpdater() {
+  if (!autoUpdater) autoUpdater = require('electron-updater').autoUpdater;
+  return autoUpdater;
+}
 const { app } = require('electron');
 const path = require('path');
 const logger = require('./logger');
@@ -37,9 +42,7 @@ const gotLock = app.requestSingleInstanceLock();
 // 开发模式（未打包）下 electron-updater 会在 app.getAppPath() 下找
 // dev-app-update.yml。正常 `npm start`（electron .）时 getAppPath() 就是 dev/，
 // 但跑 scripts/ 下的测试脚本时是 dev/scripts/ —— 所以显式指到 dev/ 根目录。
-try {
-  autoUpdater.devUpdateConfigPath = path.join(__dirname, '..', 'dev-app-update.yml');
-} catch (e) { /* 老版本没有这个属性，忽略 */ }
+
 
 let updateState = {
   checking: false,
@@ -86,6 +89,7 @@ async function check(silent) {
   updateState.checking = true;
   updateState.error = '';
   try {
+    loadUpdater();
     autoUpdater.autoDownload = false;          // 只查不下载，等用户点
     autoUpdater.autoInstallOnAppQuit = true;   // 用户点了「稍后」→ 退出时自动装
     autoUpdater.allowPrerelease = false;

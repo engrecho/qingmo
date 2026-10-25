@@ -47,7 +47,7 @@ const ROOT = path.join(DEV, '..');   // 仓库根
 }
 const CACHE = path.join(ROOT, '.cache', 'electron-mac');
 const TMP = path.join(ROOT, '.cache', 'mac-build');
-const OUT = path.join(ROOT, '.cache', 'build', 'mac');
+const OUT = path.join(ROOT, 'dist');
 const ARCHES = ['arm64', 'x64'];
 
 // @electron/asar 是 ESM-only，唯一可靠入口是 CLI。
@@ -247,7 +247,17 @@ function buildAsar() {
       else if (e.isFile()) fs.copyFileSync(s, d);
     }
   }
-  copyDir(path.join(DEV, 'src'), path.join(stage, 'resources'));
+  copyDir(path.join(DEV, 'src'), path.join(stage, 'src'));
+  // 主进程运行依赖一起打包；Electron 内置模块由目标运行时提供。
+  require('esbuild').buildSync({
+    entryPoints: [path.join(DEV, pkg.main)],
+    outfile: path.join(stage, pkg.main),
+    bundle: true,
+    platform: 'node',
+    format: 'cjs',
+    external: ['electron'],
+    target: 'node20'
+  });
 
   fs.writeFileSync(path.join(stage, 'package.json'), JSON.stringify({
     name: 'qingmo',
@@ -259,7 +269,7 @@ function buildAsar() {
     main: pkg.main
   }, null, 2));
 
-  const asar = path.join(stage, 'app.asar');
+  const asar = path.join(TMP, 'app-' + STAMP + '.asar');
   execFileSync(NODE_BIN, [ASAR_CLI, 'pack', stage, asar],
     { stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 1024 * 1024 * 512 });
   if (!fs.existsSync(asar)) throw new Error('asar 打包未产出');

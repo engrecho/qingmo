@@ -41,12 +41,8 @@ fi
 echo "==> Node.js $(node -v)"
 
 # 2. 装依赖
-if [ ! -d node_modules/electron ]; then
-  echo "==> 安装依赖（首次约 1-3 分钟）..."
-  npm install
-else
-  echo "==> 依赖已就绪"
-fi
+echo "==> 按锁文件安装完整依赖..."
+npm ci --no-audit --no-fund
 
 # 3. 检查图标（.gitignore 已把 icon.icns 保留入库，这里兜底检查）
 if [ ! -f build/icons/icon.icns ]; then

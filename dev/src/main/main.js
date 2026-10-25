@@ -615,8 +615,7 @@ ipcMain.handle('app:openExternal', async (_e, url) => {
  * 开发者工具）统一收进「设置」弹窗，由渲染层调这些。
  */
 
-/** 修复文件关联（设置面板用） */
-ipcMain.handle('app:repairFileAssoc', async () => repairFileAssoc());
+// 设置面板复用上方已注册的 app:repairFileAssoc。
 
 /** 导出诊断日志（设置面板用） */
 ipcMain.handle('app:exportLog', async () => exportDiagnostics());

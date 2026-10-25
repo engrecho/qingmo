@@ -1,3 +1,5 @@
+// 打包与开发共用此前置检查：缺少运行依赖时立即中止，禁止产出坏包。
+require.resolve('electron-updater');
 const esbuild = require('esbuild');
 const path = require('path');
 const fs = require('fs');

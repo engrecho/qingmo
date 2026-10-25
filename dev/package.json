@@ -1,6 +1,6 @@
 {
   "name": "qingmo",
-  "version": "1.6.0",
+  "version": "1.6.1",
   "description": "轻墨 QingMo — 简洁轻量的跨平台 Markdown 编辑器",
   "main": "src/main/main.js",
   "author": "王君龙",
@@ -47,7 +47,8 @@
     "test:toggle": "electron scripts/verify-md-keymap-toggle.js",
     "test:log-loop": "electron scripts/verify-log-loop.js",
     "test:ui-changes": "electron scripts/verify-ui-changes.js",
-    "test:shortcuts": "electron scripts/verify-shortcuts.js"
+    "test:shortcuts": "electron scripts/verify-shortcuts.js",
+    "test:startup": "node scripts/test-startup.js"
   },
   "devDependencies": {
     "electron": "^33.0.0",
