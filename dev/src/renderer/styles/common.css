@@ -1327,3 +1327,12 @@ body { display: flex; flex-direction: column; user-select: none; }
 }
 .img-input:focus { border-color: var(--accent); }
 .img-hint { font-size: 11.5px; color: var(--c-400); margin-top: 6px; }
+
+/* 可关闭的文档大纲，沿用现有主题颜色。 */
+.outline { flex: 0 0 208px; width: 208px; min-height: 0; display: flex; flex-direction: column; border-left: 1px solid var(--c-150); background: var(--bg); }
+.outline[hidden] { display: none; }
+#outlineList { overflow: auto; padding: 8px 0; }
+#outlineList button { display: block; width: 100%; border: 0; background: transparent; color: inherit; text-align: left; padding: 7px 12px; font: inherit; font-size: 12px; line-height: 1.5; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#outlineList button:hover, #outlineList button.active { background: var(--accent-weak); color: var(--accent); }
+.outline-empty { font-size: 12px; line-height: 1.8; opacity: .6; padding: 8px 14px; }
+@media (max-width: 900px) { .outline { flex-basis: 172px; width: 172px; } }

@@ -1,350 +1,181 @@
-# 轻墨 QingMo
+<div align="center">
+  <img src="dev/build/icons/icon-256.png" width="80" alt="轻墨图标" />
+  <h1>轻墨 QingMo</h1>
+  <p><strong>写得顺手，读得舒服。</strong></p>
+  <p>从记下一个想法，到认真完成一篇文章。<br />源码、预览与大纲，放在同一个安静的写作空间。</p>
+  <p>
+    <a href="https://github.com/engrecho/qingmo/releases/latest">下载轻墨</a> ·
+    <a href="#为什么选择轻墨">了解特点</a> ·
+    <a href="#开始使用">开始使用</a> ·
+    <a href="https://github.com/engrecho/qingmo/issues">反馈建议</a>
+  </p>
+  <p>Windows · macOS · Markdown · 本地文件</p>
+</div>
 
-> 简洁轻量的跨平台 Markdown 编辑器 —— 左边写，右边即时看到成品。
+![轻墨浅色分栏界面：左侧文件，中间源码与预览，右侧文档大纲](docs/assets/writing-light.png)
 
-Windows / macOS 双端运行，支持实时预览、预览区直接编辑、快捷插入、多标签与自动更新检测。
+<p align="center"><sub>真实应用截图：在源码里组织想法，在预览里看见成稿，用大纲把握文章结构。</sub></p>
 
-**仓库**：[github.com/engrecho/qingmo](https://github.com/engrecho/qingmo)
-**版本**：v1.3.0
+> 当前版本：**1.6.7** · [查看版本说明](https://github.com/engrecho/qingmo/releases/tag/v1.6.7)。下方截图来自真实应用界面。
 
-## 两种编辑方式
+## 为什么选择轻墨
 
-| 方式 | 快捷键 | 适合 |
+轻墨希望把写作中反复发生的小动作，变得自然一点：记下一句话，调整一个标题，通读一段文字，再把文件好好保存。
+
+| 你在意的事 | 轻墨的做法 |
+| --- | --- |
+| 写的时候，想立刻看到效果 | 源码与预览并排显示，结构和排版一起看。 |
+| 读到不顺的地方，想直接修改 | 开启预览直接编辑，在渲染后的正文里继续写，同步回 Markdown。 |
+| 文档变长后，不想反复翻找 | 标题自动组成大纲，点击章节跳转；不用时可以关掉。 |
+| 想专注眼前这篇文字 | 源码、分栏、纯预览自由切换，文件栏与大纲按需收起，支持深色主题。 |
+| 希望文件留在自己手里 | 直接读写本地 Markdown，不需要注册账号，也不必先把文档上传到云端。 |
+
+### 01 · 写草稿，也能看见成稿
+
+Markdown 适合快速组织结构，预览适合判断阅读效果。轻墨把两者放在一起：左边写标题、列表和表格，右边查看排版。需要更多空间时，一次切换就能只保留源码或预览。
+
+记录灵感时先写下来；整理长文时看结构；准备分享时通读成稿。**同一份文档，可以用不同的方式完成。**
+
+### 02 · 读到哪里，就改到哪里
+
+开启“预览区直接编辑”，可以直接在渲染后的段落里修改文字，不必为了润色一句话再去源码中寻找位置。
+
+任务清单可以直接勾选，列表按 Enter 自动续写；需要调整有序列表起点时，点击序号即可选择从 1 或指定数字开始。清除当前行格式，也有独立按钮和快捷键。
+
+![轻墨预览直接编辑：在成稿中修改正文，右侧大纲定位当前章节](docs/assets/preview-edit.png)
+
+<p align="center"><sub>截图中的补充句通过预览区实际输入，并验证已经同步回 Markdown 源码。</sub></p>
+
+### 03 · 长文章，也有清晰的路标
+
+标题不仅是排版，也是文章的骨架。右侧大纲自动整理 H1–H6 与 Setext 标题，点击即可跳转；修改标题后自动刷新，代码块中的 `#` 不会混进目录。
+
+左侧管理打开的文件，右侧查看当前文档结构。**在不同文章之间切换，在同一篇文章里快速定位。** 大纲可单独关闭，并记住开关状态。
+
+### 04 · 把界面收起来，把注意力留下来
+
+想安静地读一遍，就切到纯预览，收起两侧面板。浅色与深色主题同时覆盖编辑器和预览区，让界面适应你的使用习惯。
+
+![轻墨深色纯预览：收起源码与侧栏，专注阅读正文](docs/assets/reading-dark.png)
+
+<p align="center"><sub>同一个编辑器，也可以是一处简洁的阅读空间。</sub></p>
+
+### 05 · 文件在本地，写作更自主
+
+轻墨直接打开和保存本地 Markdown 文件。文档可以放在自己的文件夹、版本仓库或已有同步目录中，不必依赖轻墨专有的云端格式。
+
+插入本地图片时，可以使用相对路径或绝对路径；导出 HTML 时，本地图片会嵌入导出文件，方便把文章连同图片一起分享。
+
+未保存的修改有明确的关闭保护：**保存并关闭、放弃保存、返回确认**。选择放弃还需二次确认；取消保存或保存失败，文档继续保持打开。会话暂存可帮助恢复写作现场，但不能替代主动保存和备份。
+
+## 日常写作需要的功能，都在顺手的位置
+
+| 功能 | 支持情况 |
+| --- | --- |
+| 编辑与预览 | 源码 / 分栏 / 纯预览，预览区直接编辑 |
+| 文档导航 | 多标签、文件侧栏、标题大纲、章节跳转 |
+| 常用 Markdown | 标题、引用、代码块、表格、链接、列表与任务列表 |
+| 列表与格式 | 自动续写、指定编号起点、清除当前行格式 |
+| 图片与导出 | 本地图片预览、HTML 导出并嵌入本地图片 |
+| 外观 | 浅色 / 深色主题，可收起侧栏和大纲 |
+| 保存保护 | 未保存提示、放弃二次确认、会话暂存 |
+| 更新 | 检查 GitHub Release、后台下载安装包、提示用户安装 |
+
+## 下载与安装
+
+前往 **[GitHub Releases 下载](https://github.com/engrecho/qingmo/releases)**，选择适合自己电脑的安装包。
+
+| 电脑 | 推荐下载 | 如何安装 |
 | --- | --- | --- |
-| **源码模式** | `Ctrl+1` / `Ctrl+2` | 写结构：插标题、表格、代码块 |
-| **所见即所得** | `Ctrl+3` + `Ctrl+Shift+P` | 润色成稿：直接在预览区改字 |
+| Windows x64 | `QingMo-版本号-win-setup.exe` | 按安装向导完成安装。 |
+| Windows x64，想免安装使用 | `QingMo-版本号-win-portable.exe` | 直接运行；移动位置后可能需要重新设置文件关联。 |
+| Mac Apple 芯片（M 系列） | `QingMo-版本号-mac-arm64.dmg` | 打开 DMG，将轻墨拖入“应用程序”。 |
 
-按 `Ctrl+Shift+P` 打开「预览区直接编辑」后，右侧预览区就能直接打字了 ——
-改动实时写回左边源码，勾选任务列表的方框也会同步更新 `[ ]` / `[x]`。
-写完初稿通读时用这个，眼睛不用再看那些 `#`、`**`、`- `。
+Mac ZIP 为备用分发方式。Intel Mac 请只选择明确标注 `mac-x64` 的包，不要用 arm64 包代替；可用架构以具体发布页为准。更新已有 Mac 应用前，请保存文档并退出旧版。
 
-详细说明见 [`docs/使用手册.md`](docs/使用手册.md) 的「预览区直接编辑」。
+当前 Mac 包使用本地签名，尚未完成 Apple 公证。若系统阻止打开，请核实下载来源后按照“隐私与安全性”的系统提示处理，无需关闭整个系统的安全检查。
 
-> [!IMPORTANT]
-> **如果本仓库位于云盘同步目录（路径里带「云电脑同步」「OneDrive」「坚果云」等），**
-> 云盘客户端会独占锁住 `.asar` 文件，导致打包报
-> `The process cannot access the file because it is being used by another process`。
-> 解决办法：把项目移到普通本地目录，或用 `npm run pack:win:safe` 打包。
-> 详见 [`docs/开发指南.md`](docs/开发指南.md) 的「本机环境坑位」第 9 条。
+## 开始使用
 
----
+1. **打开或新建文档**：从工具栏开始，也可以打开已有 `.md` 文件。
+2. **选一种顺手的视图**：分栏写作、纯源码编辑，或直接在预览里润色。
+3. **用标题整理文章**：点击“大纲”查看章节，点击标题快速跳转。
+4. **保存自己的文字**：按 Ctrl/Cmd+S；第一次保存时选择文件位置。
 
-## 目录结构
+想先体验界面，可以打开仓库里的[写作示例](docs/examples/把想法写下来.md)、[阅读示例](docs/examples/让阅读安静一点.md)或[预览编辑示例](docs/examples/直接在预览里修改.md)。本文截图由这些公开示例生成，不包含用户文档。
 
-```
-qingmo/
-├── dev/                      ← 【开发目录】改代码看这里
-│   ├── src/                    源代码
-│   │   ├── main/                 Electron 主进程：窗口、菜单、文件读写、更新检测
-│   │   │   ├── main.js
-│   │   │   └── preload.js          安全桥接（contextBridge 白名单）
-│   │   └── renderer/             渲染进程：编辑器 + 预览 + 界面
-│   │       ├── index.html           页面结构（含 SVG 图标雪碧图）
-│   │       ├── style.css           全部样式（设计令牌 + 亮/暗双主题）
-│   │       ├── app.js              核心逻辑（多标签、编辑、预览、命令）
-│   │       ├── live-edit.js        预览区直接编辑（DOM ↔ Markdown 双向映射）
-│   │       ├── update.js           版本更新检测与提示 UI
-│   │       ├── app.bundle.js       esbuild 产物（勿手改）
-│   │       └── update.bundle.js    esbuild 产物（勿手改）
-│   │
-│   ├── scripts/                构建脚本
-│   │   ├── build-renderer.js       渲染层打包
-│   │   ├── pack.js                 打包入口（自动避开被占用的输出目录）
-│   │   ├── pick-output.js          探测输出目录是否被占用
-│   │   ├── gen-icons.js           SVG → 多尺寸 PNG
-│   │   ├── png-tool.js            纯 JS PNG 编解码与缩放
-│   │   ├── make-ico.js            ICO / ICNS 封装
-│   │   ├── clean-cache.js         清理构建缓存
-│   │   ├── publish.js             产物同步到 release/
-│   │   ├── release.js             发布 GitHub Release
-│   │   ├── test-live-edit.js      live-edit 单元测试
-│   │   ├── verify-asar.js         校验产物里的 main.js
-│   │   └── mac/                    macOS 交叉打包管线
-│   │       ├── fetch-runtime.js      下载 Electron mac 运行时
-│   │       └── build-mac.js          组装 .app
-│   │
-│   ├── build/icons/            图标源文件（logo.svg）与打包必需的 icns/ico
-│   ├── package.json
-│   ├── package-lock.json
-│   └── run.bat                 Windows 一键启动
-│
-├── release/                 ← 【发布目录】拿去用，别改
-│   ├── windows/                Windows 安装版 + 便携版
-│   │   ├── 轻墨 Setup 1.3.0.exe
-│   │   ├── 轻墨 1.3.0.exe
-│   │   ├── portable/              免安装目录版
-│   │   └── 说明.md
-│   ├── macos/                  macOS 双架构 zip
-│   │   ├── QingMo-1.3.0-mac-arm64.zip
-│   │   ├── QingMo-1.3.0-mac-x64.zip
-│   │   └── 说明.md
-│   └── README.md
-│
-├── .cache/                  ← 【中间文件】所有临时产物都在这里，随时可删
-│   ├── build/                  构建产物（electron-builder 输出）
-│   │   ├── win-unpacked/           免安装目录版的源
-│   │   └── mac/                    macOS zip 的源
-│   ├── electron-mac/            Electron mac 运行时缓存（约 200M）
-│   ├── icons/                   图标生成的临时文件
-│   ├── scratch/                 一次性脚本与调试产物
-│   └── trash/                   待删除暂存区（确认无用后可整目录删）
-│
-├── docs/                    ← 【文档】
-│   ├── 使用手册.md             给使用者：快捷键、语法、技巧、FAQ
-│   ├── 开发指南.md             给开发者：架构、打包、踩坑
-│   ├── Windows使用说明.md
-│   ├── macOS使用说明.md
-│   └── macOS打包指南.md
-│
-├── .gitignore
-├── .gitattributes
-├── RELEASE_NOTES.md         发布说明
-└── README.md
-```
+### 几个值得记住的快捷键
 
-> **约定**：中间文件一律放 `.cache/`，项目根目录只留源码和发布产物。
-> 这样 `git status` 永远是干净的，`ls` 也不会被一堆 `build-*` 淹没。
+macOS 使用 **Cmd**，Windows 使用 **Ctrl**。
 
-**三类目录的区别**：
-
-| 目录 | 性质 | 你要做什么 |
-| --- | --- | --- |
-| `dev/` | 开发 | 想改功能才动，需要 Node 环境 |
-| `release/` | 发布 | 直接使用，或交给别人 |
-| `.cache/` | 中间文件 | 打包时自动生成，不需要管，可随时删 |
-
----
-
-## 一、快速使用（只下载使用）
-
-到 [`release/`](release/) 目录取文件：
-
-**Windows**
-
-| 文件 | 说明 |
+| 操作 | 快捷键 |
 | --- | --- |
-| `轻墨 Setup 1.3.0.exe` | **安装版**（推荐）。双击安装，可选目录，创建桌面快捷方式 |
-| `轻墨 1.3.0.exe` | 单文件版。免安装，但**首次启动要等 5-10 秒**（内部要解压） |
-| `portable/轻墨.exe` | 免安装目录版。**双击立即启动**，整个文件夹一起复制 |
+| 新建 / 打开 / 保存 | Ctrl/Cmd+N / O / S |
+| 源码 / 分栏 / 预览 | Ctrl/Cmd+1 / 2 / 3 |
+| 开关预览直接编辑 | Ctrl/Cmd+Shift+P |
+| 清除当前行格式 | Ctrl/Cmd+\ |
+| 切换深色模式 | Ctrl/Cmd+D |
+| 插入表格 | Ctrl/Cmd+T |
+| 另存为 / 导出 HTML | Ctrl/Cmd+Shift+S / E |
+| 关闭当前标签 | Ctrl/Cmd+W |
 
-**macOS**
+更完整的说明：[macOS 使用说明](docs/macOS使用说明.md) · [Windows 使用说明](docs/Windows使用说明.md)
 
-| 文件 | 适用机型 |
-| --- | --- |
-| `QingMo-1.3.0-mac-arm64.zip` | Apple Silicon（M1/M2/M3/M4）—— 大多数人选这个 |
-| `QingMo-1.3.0-mac-x64.zip` | Intel 芯片 |
+## 常见问题
 
-macOS **首次必须右键点击 → 打开**（未签名，Gatekeeper 会拦截）。详见
-[`docs/macOS使用说明.md`](docs/macOS使用说明.md)。
+<details>
+<summary><strong>需要账号或联网才能写作吗？</strong></summary>
 
----
+文字编辑与本地文件读写不需要账号或网络。更新检查、远程图片和外部链接需要网络。当前没有账号同步、广告系统或应用内付费服务。
 
-## 二、macOS 自己打包（重要）
+更新检查访问官方 GitHub 仓库，安装包下载后校验大小和 SHA256，再提示用户安装；不会自行替换正在运行的应用。诊断日志和会话暂存保存在本机，反馈日志前请检查其中的文件路径等信息。
 
-> **如果你手上的 mac 包打不开，或者想要正式签名的版本，请在 Mac 上自己打包。**
-> 交叉打包产出的 zip 未经 Apple 签名与公证，只能靠「右键打开」绕过。
+</details>
 
-### 方案 A：在 Mac 上打包（推荐，能出 .dmg）
+<details>
+<summary><strong>设置默认编辑器后，Markdown 文件为什么还没有显示轻墨图标？</strong></summary>
 
-**在自己的 Mac 上打包，双击基本不会有问题** —— 本机生成的包不带隔离标记。
+默认打开方式、文件类型图标和文档缩略图由系统分别管理。1.6.7 已修正 Mac 文档 ICNS 与 Windows ICO 声明。
 
-一键脚本：
+- Mac：安装到“应用程序”，在 Finder 的“显示简介 → 打开方式”中选择轻墨并点“全部更改”。如果看到正文缩略图，可在 Finder 显示选项中关闭“显示图标预览”后检查。
+- Windows：优先使用安装版；在轻墨设置中修复文件关联，再检查 Windows 默认应用。便携版移动后，旧的图标路径可能失效。
 
-```bash
-git clone https://github.com/engrecho/qingmo.git
-cd qingmo
-./dev/pack-mac.sh                # 当前架构
-./dev/pack-mac.sh --both         # arm64 + x64 双架构
-```
+系统缓存和其他软件的关联声明仍可能影响显示，设置默认打开方式不等于强制清除全部图标缓存。
 
-脚本会自动检查 Node 版本（需 18+）、装依赖、检查图标，然后出 dmg。
-产物在 `.cache/build/mac/`，双击 dmg 挂载，把「轻墨」拖进 Applications 即可。
+</details>
 
-手动等价命令：
+<details>
+<summary><strong>预览直接编辑适合什么内容？</strong></summary>
 
-```bash
-cd qingmo/dev
-npm install
-npm run pack:mac          # dmg + zip
-npm run pack:mac:dmg      # 只要 dmg
-npm run pack:mac:zip      # 只要 zip
-```
+适合在常规 Markdown 文档中修改段落、标题、列表、表格等内容。处理复杂的嵌套结构或自定义 HTML 时，建议保留源码视图检查结果；不要把预览编辑当作任意富文本格式的无损转换器。
 
-### 方案 B：在 Mac 上打 zip（只需 Electron 运行时）
+</details>
+
+## 开发与参与
+
+轻墨基于 **Electron、CodeMirror 6、marked 与 DOMPurify**。需要 Node.js / npm：
 
 ```bash
-cd qingmo/dev
-npm install
-npm run mac:fetch     # 下载 Electron mac 运行时
-npm run pack:mac-x    # 组装 .app 并压缩
+npm --prefix dev ci
+npm --prefix dev start
 ```
 
-### 方案 C：在 Windows 上交叉打包（无法出 .dmg）
+若环境设置了 `ELECTRON_RUN_AS_NODE`，运行桌面程序前先取消该变量。
 
-```bash
-cd qingmo/dev
-npm install
-npm run mac:fetch
-npm run pack:mac-x
-```
+- [开发指南](docs/开发指南.md)：代码架构、交互约定与回归验证。
+- [发布指南](docs/发布指南.md)：双端打包、Mac 签名、安装包校验和 GitHub 发布。
+- [截图说明](docs/截图说明.md)：重新生成本文的真实界面截图。
+- [Issues](https://github.com/engrecho/qingmo/issues)：报告问题或提出改进建议。
 
-**为什么 Windows 打不出 .dmg**：`.dmg` 需要 macOS 的 `hdiutil` 磁盘镜像工具，
-Windows 上没有对应实现。`.app` 的 zip 可以交叉产出。
+反馈问题时，请提供系统版本、轻墨版本、复现步骤和可公开的最小示例。应用元数据声明 MIT，分发时也请保留第三方依赖的许可证。
 
-### 交叉打包的三个技术限制
+## 支持轻墨，继续认真打磨
 
-`dev/scripts/mac/build-mac.js` 绕开了这些坑，改动前请先看：
+如果轻墨帮你更顺手地写下一些东西，欢迎自愿支持后续维护。打赏不影响当前功能使用，也不自动兑换付费权益。
 
-| 限制 | 现象 | 应对 |
-| --- | --- | --- |
-| electron-builder 平台检查 | `Build for macOS is supported only on macOS` | 不用它，手动组装 |
-| Windows 自带 tar 拒绝 mac zip | `This does not look like a tar archive` | 自写 ZIP 读写 |
-| **mac 框架有 14 个符号链接** | 解压再压缩 → 应用报「已损坏」 | **直接改官方 zip 里的条目**，不落盘 |
+<p align="center">
+  <img src="docs/assets/support-qr.png" width="230" alt="作者提供的打赏二维码" /><br />
+  <sub>感谢每一份支持。扫码前请在支付平台确认收款对象。</sub>
+</p>
 
-第三条尤其关键：Electron 的 `Electron Framework.framework/Versions/Current` 等
-是符号链接，且目标必须是**相对路径**。Windows 无法创建符号链接，
-一旦「解压 → 修改 → 重新压缩」，链接必然丢失或被转成绝对路径，
-mac 拿到后加载框架失败 —— 就是「应用已损坏」的真正原因。
-
-所以现在的做法是：**读官方 zip → 替换 app.asar / 改 Info.plist / 换图标 → 原样复制其余条目**，
-目录结构、符号链接、权限位全部保持原样。
-
-### 签名与公证（消除「已损坏」提示）
-
-要彻底消除 Gatekeeper 拦截，需要 Apple 付费开发者账号（$99/年）：
-
-```bash
-# 在 Mac 上，配置好证书后
-codesign --deep --force --verbose --options runtime \
-  --sign "Developer ID Application: YOUR_NAME (TEAMID)" \
-  QingMo.app
-xcrun notarytool submit QingMo.zip --keychain-profile "AC_PROFILE" --wait
-xcrun stapler staple QingMo.app
-```
-
-未签名的版本只能靠用户手动「右键打开」放行。
-
----
-
-## 三、开发者指南
-
-```bash
-cd dev
-npm install
-npm start              # 启动应用
-```
-
-改完前端代码要重新打包渲染层：
-
-```bash
-npm run build:renderer
-```
-
-### 全部脚本
-
-| 命令 | 作用 |
-| --- | --- |
-| `npm start` | 启动应用 |
-| `npm run build:renderer` | 打包渲染层（app.js + update.js） |
-| `npm run pack:win` | 打包 Windows（安装版 + 便携版） |
-| `npm run pack:win:safe` | 打包 Windows，**自动避开被占用的输出目录**（推荐） |
-| `npm run pack:mac` | 打包 macOS（**需在 Mac 上执行**，出 .dmg + .zip） |
-| `npm run pack:mac:safe` | 打包 macOS，自动避开被占用的输出目录 |
-| `npm run pack:mac:dmg` | 只打 macOS dmg |
-| `npm run pack:mac:zip` | 只打 macOS zip |
-| `npm run pack:mac-x` | 交叉打包 macOS zip（可在 Windows 执行） |
-| `npm run mac:fetch` | 下载 Electron mac 运行时 |
-| `npm run gen:icons` | 从 logo.svg 生成全套图标 |
-| `npm run publish` | 把产物同步到 `release/` |
-| `npm run verify:asar -- <asar路径>` | 校验包内 main.js 的语法与正则 |
-| `npm run cache:clean` | 清理构建缓存（`-- --all` 连运行时一起清） |
-| `npm run publish` | 把产物同步到 `release/` |
-| `npm run release` | 发布 GitHub Release |
-
-### 发布 GitHub Release
-
-```bash
-# 1. 准备 PAT（需 repo 权限），设置环境变量
-export GITHUB_TOKEN=ghp_xxxxxxxxxxxx
-
-# 2. 打包并同步到 release/
-npm run pack:win
-npm run publish:win
-
-# 3. 发布
-node scripts/release.js --tag v1.3.0 --notes-file ../RELEASE_NOTES.md
-```
-
-脚本会：创建 Release（已存在则复用）→ 上传 `release/` 下的所有 `.exe` / `.zip`
-→ 更新发布说明。
-
----
-
-## 四、版本更新检测
-
-应用启动 2.5 秒后自动检查 GitHub Releases，有新版时顶部弹出提示条。
-
-- 检查接口：`GET https://api.github.com/repos/engrecho/qingmo/releases/latest`
-- 检查频率：每 24 小时一次（记录在 localStorage）
-- 手动检查：**帮助 → 检查更新**
-- 提示条可直接「前往下载」（自动匹配当前平台的资源）
-- 「查看详情」弹窗展示版本对比、更新说明、全部附件列表
-
-**更新逻辑在** `dev/src/renderer/update.js`（UI）与
-`dev/src/main/main.js`（`app:checkUpdate` IPC）。
-
----
-
-## 五、设计说明
-
-**图标**：全部为手写 SVG symbol（24 网格 / 1.6 描边 / 圆角端点），
-以 `<use href="#id">` 引用。不使用 emoji —— emoji 依赖系统字体，
-在小尺寸下笔画粘连、视觉重量不均。
-
-**配色**：9 级中性色阶（`--c-0` ~ `--c-900`）+ 单一强调色 `--accent`。
-暗色主题只覆盖 CSS 变量，不改任何结构规则。
-
-**排版**：预览区 15.5px / 行高 1.85 / 左右 46px 留白；标题加负字距收紧字面；
-状态栏数字用 `tabular-nums` 防跳动。
-
-**层级**：边框从重到轻为 `1px 分隔条` < `1px 边框` < `分组容器底色`。
-工具栏分组 hover 才显边框，常态降低视觉噪声。
-
-### 设计走查
-
-```bash
-msedge --headless=new --screenshot=out.png --window-size=1440,900 \
-  "file:///path/to/dev/src/renderer/index.html?shot=1&theme=dark"
-```
-
-| 参数 | 作用 |
-| --- | --- |
-| `shot=1` | 注入演示文档与多标签数据 |
-| `theme=light\|dark` | 强制主题，跳过 localStorage |
-| `sb=collapsed` | 侧边栏折叠态 |
-
----
-
-## 六、安全
-
-- **渲染进程无 Node 权限** —— `contextIsolation: true` + `nodeIntegration: false`
-- **文件操作走白名单** —— 只有 preload 显式暴露的方法能被调用
-- **预览防 XSS** —— HTML 经 DOMPurify 净化，恶意脚本不会执行
-- **CSP 限制** —— `script-src 'self'`，禁止内联脚本
-- **不联网** —— 除更新检查外无任何网络请求，不收集任何数据
-
----
-
-## 七、文档
-
-| 文档 | 适合谁 |
-| --- | --- |
-| [`docs/使用手册.md`](docs/使用手册.md) | 使用者 —— 快捷键、语法、技巧、FAQ |
-| [`docs/开发指南.md`](docs/开发指南.md) | 开发者 —— 架构、打包、踩坑记录 |
-| [`docs/Windows使用说明.md`](docs/Windows使用说明.md) | Windows 用户 —— 安装与卸载 |
-| [`docs/macOS使用说明.md`](docs/macOS使用说明.md) | macOS 用户 —— 安装、芯片选择、签名 |
-| [`docs/macOS打包指南.md`](docs/macOS打包指南.md) | 打包者 —— 三种打包方案、签名公证、损坏排查 |
-
----
-
-**轻墨 QingMo** · v1.3.0 · MIT License
+目前只提供作者二维码，尚未接入应用内支付或到账识别。打赏入口、专业版和渠道上架属于后续规划，具体建议见[商业化与渠道建议](docs/商业化与渠道建议.md)。

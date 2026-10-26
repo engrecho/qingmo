@@ -1,6 +1,8 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('api', {
+  confirmClose: names => ipcRenderer.invoke('app:confirmClose', names),
+  finishClose: approved => ipcRenderer.send('app:finishClose', approved),
   open: () => ipcRenderer.invoke('fs:open'),
   pickImage: (baseDir) => ipcRenderer.invoke('fs:pickImage', baseDir),
   readImage: (source, documentPath) => ipcRenderer.invoke('fs:readImage', source, documentPath),

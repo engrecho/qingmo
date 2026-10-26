@@ -11,6 +11,7 @@ import { searchKeymap } from '@codemirror/search';
 import { tags as t } from '@lezer/highlight';
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
+import { headings } from './outline';
 import { orderedListRange, renumberList } from './list-actions';
 import { imageHtml, loadLocalImages } from './local-images';
 import { splitBlocks, elementToMarkdown, annotateBlocks } from './live-edit';
@@ -200,6 +201,58 @@ let tabSeq = 0;
 /* ============ 渲染预览 ============ */
 const previewEl = document.getElementById("preview");
 
+const outlineEl = document.getElementById('outline');
+const outlineList = document.getElementById('outlineList');
+let outlineVisible = localStorage.getItem('mdx.outline') !== '0';
+let outlineTimer;
+let outlineItems = [];
+function toggleOutline(show = !outlineVisible) {
+  outlineVisible = show;
+  outlineEl.hidden = !show;
+  document.getElementById('btnOutline').setAttribute('aria-pressed', String(show));
+  localStorage.setItem('mdx.outline', show ? '1' : '0');
+  if (show) renderOutline();
+}
+function renderOutline() {
+  if (!outlineVisible) return;
+  outlineItems = headings(view.state.doc.toString());
+  outlineList.replaceChildren();
+  if (!outlineItems.length) {
+    const empty = document.createElement('p'); empty.className = 'outline-empty';
+    empty.textContent = '暂无标题，添加标题后将在这里显示'; outlineList.appendChild(empty);
+  }
+  for (const item of outlineItems) {
+    const button = document.createElement('button');
+    const label = document.createElement('span');
+    label.innerHTML = DOMPurify.sanitize(marked.parseInline(item.label));
+    button.textContent = label.textContent || '未命名标题'; button.title = button.textContent;
+    button.dataset.from = item.from; button.style.paddingLeft = `${12 + (item.level - 1) * 12}px`;
+    button.addEventListener('click', () => {
+      view.dispatch({ selection: { anchor: item.from }, scrollIntoView: true });
+      if (panes.dataset.mode !== 'preview') view.focus();
+      const candidates = [...previewEl.querySelectorAll(`h${item.level}`)];
+      const matches = candidates.filter(el => el.textContent.trim() === button.textContent.trim());
+      const index = outlineItems.filter(other => other.from < item.from && other.level === item.level && other.label === item.label).length;
+      (matches[index] || matches[0])?.scrollIntoView({ block: 'start' });
+      highlightOutline();
+    });
+    outlineList.appendChild(button);
+  }
+  highlightOutline();
+}
+function highlightOutline() {
+  const position = view.state.selection.main.head;
+  const active = [...outlineItems].reverse().find(item => item.from <= position)?.from;
+  for (const button of outlineList.querySelectorAll('button')) {
+    const selected = Number(button.dataset.from) === active;
+    button.classList.toggle('active', selected);
+    if (selected) button.setAttribute('aria-current', 'location'); else button.removeAttribute('aria-current');
+  }
+}
+document.getElementById('btnOutline').addEventListener('click', () => toggleOutline());
+document.getElementById('closeOutline').addEventListener('click', () => toggleOutline(false));
+toggleOutline(outlineVisible);
+
 marked.setOptions({ gfm: true, breaks: false, headerIds: true, mangle: false });
 
 /* ---- 预览区直接编辑（Live Preview） ---- */
@@ -232,6 +285,7 @@ function renderPreview(force) {
   }
   previewRenderPending = false;
 
+  renderOutline();
   const md = view.state.doc.toString();
   try {
     const raw = marked.parse(md);
@@ -482,6 +536,11 @@ function onUpdate(u) {
     // 同步到tab 并刷新侧边栏脏标记（节流，避免每次按键都重排 DOM）
     scheduleSidebarSync();
   }
+  if (u.docChanged) {
+    clearTimeout(outlineTimer);
+    outlineTimer = setTimeout(renderOutline, 180);
+  }
+  if (u.selectionSet) highlightOutline();
   if (u.selectionSet || u.docChanged) updateStatus();
 }
 
@@ -588,22 +647,45 @@ function switchTab(id) {
   updateStatus();
 }
 
+let closePromptActive = false;
+async function prepareClose(candidates) {
+  if (closePromptActive) return false;
+  closePromptActive = true;
+  try {
+    syncActive();
+    const changed = candidates.filter(tab => tab.dirty);
+    if (!changed.length) return true;
+    const action = await window.api.confirmClose(changed.map(tabName));
+    if (action === 'save') {
+      for (const tab of changed) if (!await saveTab(tab)) return false;
+      return true;
+    }
+    if (action === 'discard') {
+      // 窗口关闭也会恢复会话，放弃的草稿必须从恢复记录移除。
+      for (const tab of changed) {
+        tab.content = ''; tab.dirty = false;
+        if (tab.id === activeId) setDirty(false);
+      }
+      return true;
+    }
+    return false;
+  } catch (error) {
+    toast('保存失败，文档未关闭：' + error.message);
+    return false;
+  } finally { closePromptActive = false; }
+}
+window.api.on('app:requestClose', async () => {
+  const approved = await prepareClose(tabs);
+  if (approved) persistSession();
+  window.api.finishClose(approved);
+});
+
 async function closeTab(id) {
   const idx = tabs.findIndex(t => t.id === id);
   if (idx < 0) return;
   const t = tabs[idx];
 
-  if (t.dirty) {
-    const r = window.confirm(`「${tabName(t)}」有未保存的修改。\n\n点「确定」保存，点「取消」放弃关闭，点「取消」也可选择不关闭。`);
-    // confirm 只有两态，这里用两次确认区分
-    if (r) {
-      const saved = await saveTab(t);
-      if (!saved) return;   // 取消保存对话框则不关闭
-    } else {
-      const again = window.confirm(`确定放弃「${tabName(t)}」的修改吗？此操作不可恢复。`);
-      if (!again) return;
-    }
-  }
+  if (!await prepareClose([t])) return;
 
   tabs.splice(idx, 1);
   if (activeId === id) {
@@ -622,11 +704,7 @@ async function closeTab(id) {
 }
 
 async function closeAllTabs() {
-  const dirtyTabs = tabs.filter(t => t.dirty);
-  if (dirtyTabs.length) {
-    const ok = window.confirm(`${dirtyTabs.length} 个文档有未保存的修改，全部关闭将丢失这些修改。\n\n确定继续吗？`);
-    if (!ok) return;
-  }
+  if (!await prepareClose(tabs)) return;
   tabs = [];
   activeId = null;
   addTab();
@@ -2168,6 +2246,10 @@ if (/[?&]test=1/.test(location.search)) {
   window.__qingmo = {
     // 编辑内核的纯函数，测试用（测表格解析这类容易算错位置的逻辑）
     __ek: { parseTableRow, isTableDivider, planEnter, planBackspace, planTab, parseListItem },
+    toggleOutline,
+    closeActiveTab: () => closeTab(activeId),
+    closeAllTabs,
+    tabCount: () => tabs.length,
     getDoc: () => view.state.doc.toString(),
     setDoc: (text, cursor) => view.dispatch({
       changes: { from: 0, to: view.state.doc.length, insert: text },

@@ -35,6 +35,8 @@ const autoUpdate = require('./auto-update').createAutoUpdater({
 const { compareVersion } = require('./version');
 
 let win = null;
+let quitRequested = false;
+app.on('before-quit', () => { quitRequested = true; });
 
 // 应用图标：开发时读 build/icons，打包后读 resources 里的
 function appIconPath() {
@@ -87,6 +89,24 @@ function createWindow() {
       spellcheck: false
     }
   });
+
+  let closeApproved = false;
+  let closePending = false;
+  win.on('close', event => {
+    if (closeApproved) return;
+    event.preventDefault();
+    if (closePending) return;
+    closePending = true;
+    win.webContents.send('app:requestClose');
+  });
+  const finishClose = (event, approved) => {
+    if (!win || event.sender !== win.webContents) return;
+    closePending = false;
+    if (approved === true) { closeApproved = true; if (quitRequested) app.quit(); else win.close(); }
+    else quitRequested = false;
+  };
+  ipcMain.on('app:finishClose', finishClose);
+  win.once('closed', () => ipcMain.removeListener('app:finishClose', finishClose));
 
   win.loadFile(path.join(__dirname, '../renderer/index.html'));
   win.once('ready-to-show', () => {
@@ -784,3 +804,10 @@ platform.registerFileOpen(app, isDocPath, openPathInApp);
 
 app.on('window-all-closed', () => { if (platform.quitOnAllWindowsClosed) app.quit(); });
 app.on('will-quit', () => autoUpdate.stop());
+
+// 渲染层只能请求固定的关闭提示，不能注入系统弹窗选项。
+ipcMain.handle('app:confirmClose', async (event, names) => {
+  const parent = BrowserWindow.fromWebContents(event.sender);
+  if (!parent || !Array.isArray(names) || !names.length) return 'cancel';
+  return require('./close-dialog').confirmClose(dialog, parent, names.map(name => String(name).slice(0, 200)));
+});

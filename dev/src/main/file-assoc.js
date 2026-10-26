@@ -114,7 +114,7 @@ async function register() {
     const cmds = [
       ['add', 'HKCU\\Software\\Classes\\.' + ext, '/ve', '/t', 'REG_SZ', '/d', PROGID, '/f'],
       ['add', 'HKCU\\Software\\Classes\\' + PROGID, '/ve', '/t', 'REG_SZ', '/d', 'Markdown 文档', '/f'],
-      ['add', 'HKCU\\Software\\Classes\\' + PROGID + '\\DefaultIcon', '/ve', '/t', 'REG_SZ', '/d', exe + ',0', '/f'],
+      ['add', 'HKCU\\Software\\Classes\\' + PROGID + '\\DefaultIcon', '/ve', '/t', 'REG_SZ', '/d', '"' + exe + '",0', '/f'],
       ['add', 'HKCU\\Software\\Classes\\' + PROGID + '\\shell\\open\\command', '/ve', '/t', 'REG_SZ', '/d', '"' + exe + '" "%1"', '/f']
     ];
     let ok = true;
@@ -133,7 +133,7 @@ async function register() {
         `New-Item -Path "$base\\${PROGID}\\shell\\open\\command" -Force | Out-Null;` +
         `Set-Item -Path "$base\\${PROGID}" -Value 'Markdown 文档';` +
         `New-Item -Path "$base\\${PROGID}\\DefaultIcon" -Force | Out-Null;` +
-        `Set-Item -Path "$base\\${PROGID}\\DefaultIcon" -Value '${exeQ},0';` +
+        `Set-Item -Path "$base\\${PROGID}\\DefaultIcon" -Value '"${exeQ}",0';` +
         `Set-Item -Path "$base\\${PROGID}\\shell\\open\\command" -Value ('"' + '${exeQ}' + '" "%1"');` +
         `Write-Output 'OK'`);
       ok = !!p && p.indexOf('OK') >= 0;

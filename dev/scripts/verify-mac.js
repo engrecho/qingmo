@@ -95,6 +95,8 @@ if (fs.existsSync(plistPath)) {
   check('CFBundleDisplayName = 轻墨', get('CFBundleDisplayName') === '轻墨', '实际: ' + get('CFBundleDisplayName'));
   check('CFBundleIdentifier 已改', get('CFBundleIdentifier') === 'cn.bajiaolu.qingmo', '实际: ' + get('CFBundleIdentifier'));
   check('CFBundleIconFile = icon.icns', get('CFBundleIconFile') === 'icon.icns', '实际: ' + get('CFBundleIconFile'));
+  const documentIcon = get('CFBundleTypeIconFile');
+  check('Markdown 文档图标为有效 ICNS', !!documentIcon && documentIcon.endsWith('.icns') && fs.existsSync(path.join(CONTENTS, 'Resources', documentIcon)), '实际: ' + documentIcon);
   const ver = get('CFBundleShortVersionString');
   check('CFBundleShortVersionString 有值', !!ver && /^\d+\.\d+\.\d+$/.test(ver), '实际: ' + ver);
 } else {

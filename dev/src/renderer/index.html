@@ -115,6 +115,7 @@
           <svg class="ic-light"><use href="#i-moon"/></svg>
           <svg class="ic-dark"><use href="#i-sun"/></svg>
         </button>
+        <button class="tb" id="btnOutline" title="显示或隐藏文档大纲" aria-controls="outline" aria-pressed="true">大纲</button>
         <button class="tb icon-only" id="btnSettings" title="设置">
           <svg><use href="#i-settings"/></svg>
         </button>
@@ -172,6 +173,10 @@
         </span>
       </footer>
     </div>
+    <aside class="outline" id="outline" aria-label="文档大纲">
+      <div class="sb-head"><span class="sb-title">文档大纲</span><button class="sb-btn" id="closeOutline" title="关闭大纲" aria-label="关闭大纲">×</button></div>
+      <nav id="outlineList" aria-label="标题导航"></nav>
+    </aside>
   </div>
 
   <div id="toast" class="toast"></div>

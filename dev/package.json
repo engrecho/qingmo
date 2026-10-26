@@ -1,6 +1,6 @@
 {
   "name": "qingmo",
-  "version": "1.6.5",
+  "version": "1.6.7",
   "description": "轻墨 QingMo — 简洁轻量的跨平台 Markdown 编辑器",
   "main": "src/main/main.js",
   "author": "王君龙",
@@ -31,7 +31,7 @@
     "gen:logo": "electron scripts/gen-logo-icons.js",
     "check:bundle": "node scripts/check-bundle-fresh.js",
     "test:edit": "electron scripts/verify-edit.js",
-    "test:all": "npm run test:startup && npm run test:auto-update && npm run test:update-flow && npm run test:images && npm run test:lists && npm run test:core && npm run test:live-edit && npm run test:dom && npm run test:edit && npm run test:keys && npm run test:ime && npm run test:real-input && npm run test:toggle && npm run test:shortcuts && npm run test:log-loop && npm run test:log && npm run test:update && npm run test:update-fallback && npm run test:ui-changes",
+    "test:all": "npm run test:startup && npm run test:auto-update && npm run test:update-flow && npm run test:images && npm run test:lists && npm run test:core && npm run test:live-edit && npm run test:dom && npm run test:edit && npm run test:keys && npm run test:ime && npm run test:real-input && npm run test:toggle && npm run test:shortcuts && npm run test:log-loop && npm run test:log && npm run test:update && npm run test:update-fallback && npm run test:ui-changes && npm run test:close && npm run test:outline",
     "verify:mac": "node scripts/verify-mac.js",
     "test:core": "node scripts/test-editor-core.js",
     "test:keys": "electron scripts/verify-keys.js",
@@ -51,7 +51,9 @@
     "test:startup": "node scripts/test-startup.js",
     "test:update-flow": "electron scripts/verify-update-flow.js",
     "test:images": "electron scripts/verify-local-images.js",
-    "test:lists": "electron scripts/verify-list-edit.js"
+    "test:lists": "electron scripts/verify-list-edit.js",
+    "test:close": "node scripts/test-close-dialog.js && electron scripts/verify-close.js",
+    "test:outline": "electron scripts/verify-outline.js"
   },
   "devDependencies": {
     "electron": "^33.0.0",
@@ -127,7 +129,7 @@
         "role": "Editor",
         "rank": "Owner",
         "isPackage": false,
-        "icon": "build/icons/icon-256.png"
+        "icon": "build/icons/icon"
       }
     ],
     "nsis": {
