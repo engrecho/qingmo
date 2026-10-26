@@ -1,5 +1,7 @@
 ## v1.6.7
 
+已发布：[GitHub Release](https://github.com/engrecho/qingmo/releases/tag/v1.6.7)。Mac Apple 芯片 DMG / ZIP、Windows x64 安装版 / 便携版及 latest.yml 共 5 个远程文件，均已通过大小与 SHA256 比对。源码、README 和三张真实截图同步至 main。
+
 - 增加可开关、记忆状态的文档大纲，支持标题跳转与实时更新。
 - 修正 Mac 文档图标声明，使用 ICNS；Windows 使用 ICO 并修正关联图标路径引号。
 - 重写 README，加入三张真实高清截图，展示分栏写作、预览编辑和深色阅读；补充安装、更新、开发、打赏与渠道规划说明。
