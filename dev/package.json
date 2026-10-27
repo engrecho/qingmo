@@ -55,7 +55,7 @@
     "test:close": "node scripts/test-close-dialog.js && electron scripts/verify-close.js",
     "test:outline": "electron scripts/verify-outline.js",
     "test:pdf": "electron scripts/verify-pdf.js",
-    "test:documents": "node scripts/test-document-lifecycle.js && node scripts/test-app-exit.js && electron scripts/verify-document-lifecycle.js"
+    "test:documents": "node scripts/test-documents.js"
   },
   "devDependencies": {
     "electron": "^33.0.0",

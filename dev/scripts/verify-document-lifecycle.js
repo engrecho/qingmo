@@ -2,12 +2,12 @@ const { app, BrowserWindow, ipcMain } = require('electron');
 const { EventEmitter } = require('node:events');
 const fs = require('node:fs');
 const path = require('node:path');
-const os = require('node:os');
 const assert = require('node:assert/strict');
 const { attachWindowClose } = require('../src/main/window-close');
 const { renameFile } = require('../src/main/rename-file');
 const { preferences } = require('../src/main/preferences');
-const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'qingmo-documents-'));
+const temporary = process.env.QINGMO_DOCUMENT_TEST_ROOT;
+if (!temporary) { console.error('Run this regression using npm run test:documents'); app.exit(1); }
 app.setPath('userData', path.join(temporary, 'profile'));
 app.on('window-all-closed', () => {});
 app.on('before-quit', event => event.preventDefault());
@@ -169,9 +169,9 @@ app.whenReady().then(async () => {
     assert.equal(quitApproved, true); assert.equal(win.isDestroyed(), true);
     assert.equal(fs.readFileSync(fileA, 'utf8'), 'unsaved A');
     console.log('PASS settings toggle persists; background close retains tabs; quit cancel restores window; approved quit closes all');
-    clearTimeout(deadline); await wait(300); fs.rmSync(temporary, { recursive: true, force: true }); app.exit(0);
+    clearTimeout(deadline); await wait(300); fs.writeFileSync(path.join(temporary, 'renderer-proof.json'), JSON.stringify({ passed: true })); app.exit(0);
   } catch (error) {
     console.error(error); clearTimeout(deadline); if (!win.isDestroyed()) win.destroy(); await wait(300);
-    fs.rmSync(temporary, { recursive: true, force: true }); app.exit(1);
+    app.exit(1);
   }
 });

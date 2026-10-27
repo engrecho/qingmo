@@ -38,7 +38,20 @@ jobs:
           cache-dependency-path: dev/package-lock.json
       - run: npm ci
       - run: npm run build:renderer && npm run check:bundle && npm run test:startup && npm run test:core && npm run test:live-edit
-      - run: npm run test:lists -- --no-sandbox --disable-gpu && npm run test:close -- --no-sandbox --disable-gpu && npm run test:outline -- --no-sandbox --disable-gpu && npm run test:documents -- --no-sandbox --disable-gpu
+      - name: Document interaction regressions
+        timeout-minutes: 5
+        run: |
+          set -euo pipefail
+          exec > >(tee /tmp/qingmo-interactions.log) 2>&1
+          trap 'echo "::error::$(tail -n 35 /tmp/qingmo-interactions.log | tr "\n" " " )"' ERR
+          echo "::notice::Running list regression"
+          npm run test:lists -- --no-sandbox --disable-gpu
+          echo "::notice::Running close regression"
+          npm run test:close -- --no-sandbox --disable-gpu
+          echo "::notice::Running outline regression"
+          npm run test:outline -- --no-sandbox --disable-gpu
+          echo "::notice::Running document lifecycle regression"
+          npm run test:documents -- --no-sandbox --disable-gpu
       - if: runner.os == 'macOS'
         run: |
           set -euo pipefail

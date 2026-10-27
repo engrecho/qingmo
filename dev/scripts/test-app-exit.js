@@ -14,4 +14,4 @@ try {
   const proof = JSON.parse(fs.readFileSync(path.join(temporary, 'proof.json'), 'utf8'));
   assert.deepEqual(proof, { passed: true, canceledQuit: true, savedOnQuit: true, restoredWindow: true });
   console.log('PASS actual main process: hide/restore without prompt, cancel app.quit, save document before real exit');
-} finally { fs.rmSync(temporary, { recursive: true, force: true }); }
+} finally { fs.rmSync(temporary, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }); }
