@@ -34,9 +34,11 @@ const autoUpdate = require('./auto-update').createAutoUpdater({
 });
 const { compareVersion } = require('./version');
 
+if (!app.requestSingleInstanceLock()) { app.quit(); return; }
+
 let win = null;
-let quitRequested = false;
-app.on('before-quit', () => { quitRequested = true; });
+let appPreferences;
+const getPreferences = () => appPreferences || (appPreferences = require('./preferences').preferences(app));
 
 // 应用图标：开发时读 build/icons，打包后读 resources 里的
 function appIconPath() {
@@ -90,23 +92,10 @@ function createWindow() {
     }
   });
 
-  let closeApproved = false;
-  let closePending = false;
-  win.on('close', event => {
-    if (closeApproved) return;
-    event.preventDefault();
-    if (closePending) return;
-    closePending = true;
-    win.webContents.send('app:requestClose');
+  require('./window-close').attachWindowClose({
+    app, window: win, ipcMain,
+    keepInBackground: () => getPreferences().get().closeToBackground
   });
-  const finishClose = (event, approved) => {
-    if (!win || event.sender !== win.webContents) return;
-    closePending = false;
-    if (approved === true) { closeApproved = true; if (quitRequested) app.quit(); else win.close(); }
-    else quitRequested = false;
-  };
-  ipcMain.on('app:finishClose', finishClose);
-  win.once('closed', () => ipcMain.removeListener('app:finishClose', finishClose));
 
   win.loadFile(path.join(__dirname, '../renderer/index.html'));
   win.once('ready-to-show', () => {
@@ -153,7 +142,7 @@ function createWindow() {
 }
 
 function buildMenu() {
-  const send = (ch) => () => win && win.webContents.send(ch);
+  const send = (ch) => () => { if (win && !win.isDestroyed()) { win.show(); win.webContents.send(ch); } };
   const template = [
     ...(platform.appMenuItem ? [platform.appMenuItem] : []),
     {
@@ -172,6 +161,11 @@ function buildMenu() {
         },
         { type: 'separator' },
         { label: '保存', accelerator: 'CmdOrCtrl+S', click: send('cmd:save') },
+        { label: '重命名…', accelerator: 'F2', click: send('cmd:rename') },
+        { label: '重新打开上次关闭的文件', accelerator: 'CmdOrCtrl+Shift+T', click: send('cmd:reopenClosed') },
+        { label: '最近关闭的文件…', click: send('cmd:closedHistory') },
+        { label: '关闭当前文档', accelerator: 'CmdOrCtrl+W', click: send('cmd:closeTab') },
+        { label: '关闭全部', click: send('cmd:closeAll') },
         { label: '另存为…', accelerator: 'CmdOrCtrl+Shift+S', click: send('cmd:saveAs') },
         { type: 'separator' },
         { label: '导出 PDF…', click: send('cmd:exportPdf') },
@@ -470,6 +464,18 @@ async function exportDiagnostics() {
   return { text, file: logger.file(), dir: logger.dir(), lines, copied, opened };
 }
 
+ipcMain.handle('app:quit', () => { app.quit(); return true; });
+ipcMain.handle('app:getPreferences', () => getPreferences().get());
+ipcMain.handle('app:setPreferences', (_event, patch) => getPreferences().set(patch));
+ipcMain.handle('fs:rename', async (_event, source, name) => {
+  try {
+    const result = await require('./rename-file').renameFile(source, name);
+    recentList = recentList.map(file => file === source ? result.path : file);
+    pushRecent(result.path);
+    return result;
+  } catch (error) { return { ok: false, error: error.code === 'EEXIST' ? '同名文件已存在，未覆盖原文件' : error.message }; }
+});
+
 ipcMain.handle('fs:save', async (_e, p, content) => {
   fs.writeFileSync(p, content, 'utf-8');
   pushRecent(p);
@@ -704,7 +710,8 @@ app.whenReady().then(() => {
   createWindow();
   autoUpdate.start();
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    if (!win || win.isDestroyed()) createWindow();
+    else { if (win.isMinimized()) win.restore(); win.show(); win.focus(); }
   });
 
   // 检查文件关联 —— 「双击 md 打不开」最常见的原因就是关联没指向轻墨。
@@ -806,6 +813,16 @@ function openPathInApp(p) {
 // Windows / Linux 走命令行参数，差异见 platform/）。
 // 必须在模块顶层调用 —— macOS 的 open-file 可能早于 app ready。
 platform.registerFileOpen(app, isDocPath, openPathInApp);
+
+app.on('second-instance', (_event, argv) => {
+  app.whenReady().then(() => {
+    if (!win || win.isDestroyed()) createWindow();
+    if (win.isMinimized()) win.restore();
+    win.show(); win.focus();
+    const document = argv.find(isDocPath);
+    if (document) openPathInApp(document);
+  });
+});
 
 app.on('window-all-closed', () => { if (platform.quitOnAllWindowsClosed) app.quit(); });
 app.on('will-quit', () => autoUpdate.stop());

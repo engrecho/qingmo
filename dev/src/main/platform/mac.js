@@ -24,7 +24,7 @@ module.exports = {
 
   titleBarStyle: 'hiddenInset',
   appMenuItem: { role: 'appMenu' },
-  quitMenuItem: { role: 'close' },
+  quitMenuItem: { role: 'close', label: '关闭窗口', accelerator: 'CmdOrCtrl+Shift+W' },
 
   // Dock 使用应用包内的 macOS ICNS，保留平台专属透明留白。
   // 不用共享的满幅 Windows PNG 覆盖系统加载的图标。

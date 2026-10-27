@@ -1,0 +1,53 @@
+const assert = require('node:assert/strict');
+const { EventEmitter } = require('node:events');
+const fs = require('node:fs/promises');
+const os = require('node:os');
+const path = require('node:path');
+const { attachWindowClose } = require('../src/main/window-close');
+const { preferences } = require('../src/main/preferences');
+const { renameFile } = require('../src/main/rename-file');
+const { confirmClose } = require('../src/main/close-dialog');
+(async () => {
+  const temporary = await fs.mkdtemp(path.join(os.tmpdir(), 'qingmo-lifecycle-'));
+  try {
+    const original = path.join(temporary, '原文.md');
+    await fs.writeFile(original, 'saved content');
+    const renamed = await renameFile(original, '新名字.md');
+    assert.equal(await fs.readFile(renamed.path, 'utf8'), 'saved content');
+    await assert.rejects(fs.access(original));
+    await fs.writeFile(original, 'other document');
+    await assert.rejects(renameFile(renamed.path, '原文.md'), { code: 'EEXIST' });
+    assert.equal(await fs.readFile(original, 'utf8'), 'other document');
+    assert.equal(await fs.readFile(renamed.path, 'utf8'), 'saved content');
+    for (const name of ['../escape.md', 'bad/name.md', 'CON.md', '..', 'bad.']) await assert.rejects(renameFile(renamed.path, name));
+    console.log('PASS rename preserves content, rejects collision and invalid names');
+    const fakeApp = { getPath: () => temporary };
+    const settings = preferences(fakeApp); assert.equal(settings.get().closeToBackground, false);
+    settings.set({ closeToBackground: true }); assert.equal(preferences(fakeApp).get().closeToBackground, true);
+    assert.throws(() => settings.set({ closeToBackground: 'false' }));
+    console.log('PASS close preference persists and validates values');
+    const dialogs = [];
+    await confirmClose({ showMessageBox: async (_parent, options) => { dialogs.push(options); return { response: dialogs.length === 1 ? 1 : 1 }; } }, {}, ['甲.md — /a/甲.md', '乙.md — /b/乙.md']);
+    for (const dialog of dialogs) { assert.match(dialog.detail, /甲.md/); assert.match(dialog.detail, /乙.md/); }
+    console.log('PASS both close dialogs list every unsaved document');
+    const application = new EventEmitter(), ipc = new EventEmitter(), window = new EventEmitter();
+    let background = true, visible = true, prompts = 0, destroyed = false;
+    window.webContents = { send: channel => { assert.equal(channel, 'app:requestClose'); prompts++; } };
+    window.hide = () => { visible = false; };
+    window.show = () => { visible = true; };
+    window.focus = () => {};
+    window.isVisible = () => visible;
+    window.close = () => { let prevented = false; window.emit('close', { preventDefault: () => { prevented = true; } }); if (!prevented) { destroyed = true; window.emit('closed'); } };
+    application.quit = () => { application.emit('before-quit'); window.close(); };
+    attachWindowClose({ app: application, window, ipcMain: ipc, keepInBackground: () => background });
+    window.close(); assert.equal(visible, false); assert.equal(prompts, 0); assert.equal(destroyed, false);
+    application.quit(); assert.equal(visible, true); assert.equal(prompts, 1); assert.equal(destroyed, false);
+    ipc.emit('app:finishClose', { sender: {} }, true); assert.equal(destroyed, false);
+    ipc.emit('app:finishClose', { sender: window.webContents }, false); assert.equal(destroyed, false);
+    window.close(); assert.equal(visible, false); assert.equal(prompts, 1);
+    background = false; window.close(); assert.equal(prompts, 2);
+    ipc.emit('app:finishClose', { sender: window.webContents }, true); assert.equal(destroyed, true);
+    assert.equal(ipc.listenerCount('app:finishClose'), 0);
+    console.log('PASS background hide, quit handshake, cancel, trusted reply and normal exit');
+  } finally { await fs.rm(temporary, { recursive: true, force: true }); }
+})().catch(error => { console.error(error); process.exitCode = 1; });

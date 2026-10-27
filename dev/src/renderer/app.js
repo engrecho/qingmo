@@ -106,9 +106,7 @@ const syntaxTheme = EditorView.theme({
   ".cm-variable": { color: "#d4506a" }
 });
 
-const state = EditorState.create({
-  doc: DEFAULT_DOC,
-  extensions: [
+const editorExtensions = [
     lineNumbers(), highlightActiveLineGutter(), history(),
     drawSelection(), dropCursor(),
     EditorState.allowMultipleSelections.of(true),
@@ -151,8 +149,8 @@ const state = EditorState.create({
     editorTheme, syntaxTheme,
     EditorView.updateListener.of(onUpdate),
     EditorView.lineWrapping
-  ]
-});
+  ];
+const state = EditorState.create({ doc: DEFAULT_DOC, extensions: editorExtensions });
 
 const view = new EditorView({ state, parent: document.getElementById("editor") });
 window.__view = view;
@@ -188,6 +186,7 @@ view.contentDOM.addEventListener('compositionend', () => {
 /* ============ 状态 ============ */
 let currentPath = null;
 let dirty = false;
+let loadingTab = false;
 let renderTimer = null;
 const DRAFT_KEY = "mdx.draft";
 const THEME_KEY = "mdx.theme";
@@ -527,10 +526,16 @@ function setLiveEdit(v) {
   toast(v ? '预览区可直接编辑' : '预览区恢复为只读');
 }
 
+function hasUnsavedChanges(tab) {
+  if (!tab.path && !tab.content.trim()) return false;
+  return tab.savedContent === null || tab.content !== tab.savedContent;
+}
+
 function onUpdate(u) {
-  if (u.docChanged) {
-    dirty = true;
-    setDirty(true);
+  if (u.docChanged && !loadingTab) {
+    const tab = activeTab();
+    if (tab) { tab.content = view.state.doc.toString(); tab.dirty = hasUnsavedChanges(tab); }
+    setDirty(tab ? tab.dirty : false);
     scheduleRender();
     saveDraft();
     // 同步到tab 并刷新侧边栏脏标记（节流，避免每次按键都重排 DOM）
@@ -550,8 +555,6 @@ function scheduleSidebarSync() {
   if (sbSyncTimer) return;
   sbSyncTimer = setTimeout(() => {
     sbSyncTimer = null;
-    const t = activeTab();
-    if (t) { t.dirty = true; t.content = view.state.doc.toString(); }
     renderSidebar();
   }, 250);
 }
@@ -574,7 +577,7 @@ const fileName = document.getElementById("fileName");
 
 function setDirty(v) {
   dirty = v;
-  stSaved.textContent = v ? "未保存" : "已保存";
+  stSaved.textContent = v ? "未保存" : (activeTab()?.path ? "已保存" : "新文档");
   stSaved.classList.toggle("dirty", v);
 }
 
@@ -606,15 +609,19 @@ function syncActive() {
   if (!t) return;
   t.content = view.state.doc.toString();
   t.dirty = dirty;
+  t.editorState = view.state;
+  t.sel = view.state.selection.main.head;
 }
 
-function addTab({ path = null, content = '', name = '' } = {}) {
+function addTab({ path = null, content = '', name = '', dirty: restoredDirty = false, savedContent } = {}) {
   // 已打开同一路径则切过去
   if (path) {
     const exist = tabs.find(t => t.path === path);
     if (exist) { switchTab(exist.id); return exist; }
   }
-  const t = { id: ++tabSeq, path, name, content, dirty: false, sel: 0, scroll: 0 };
+  const baseline = savedContent !== undefined ? savedContent : (restoredDirty ? (path ? null : '') : content);
+  const t = { id: ++tabSeq, path, name, content, savedContent: baseline, dirty: false, sel: 0, scroll: 0 };
+  t.dirty = hasUnsavedChanges(t);
   tabs.push(t);
   switchTab(t.id);
   return t;
@@ -629,11 +636,13 @@ function switchTab(id) {
   activeId = id;
   dirty = false;
 
-  view.dispatch({
-    changes: { from: 0, to: view.state.doc.length, insert: t.content || "" },
-    selection: { anchor: Math.min(t.sel || 0, (t.content || "").length) },
-    scrollIntoView: false
-  });
+  loadingTab = true;
+  try {
+    view.setState(t.editorState || EditorState.create({
+      doc: t.content || '', extensions: editorExtensions,
+      selection: { anchor: Math.min(t.sel || 0, (t.content || '').length) }
+    }));
+  } finally { loadingTab = false; }
   // 恢复滚动位置
   requestAnimationFrame(() => {
     try { view.scrollDOM.scrollTop = t.scroll || 0; } catch (e) {}
@@ -644,6 +653,7 @@ function switchTab(id) {
   setDirty(t.dirty);
   renderSidebar();
   renderPreview(true);
+  renderOutline();
   updateStatus();
 }
 
@@ -655,7 +665,7 @@ async function prepareClose(candidates) {
     syncActive();
     const changed = candidates.filter(tab => tab.dirty);
     if (!changed.length) return true;
-    const action = await window.api.confirmClose(changed.map(tabName));
+    const action = await window.api.confirmClose(changed.map(tab => tabName(tab) + (tab.path ? ' — ' + tab.path : '')));
     if (action === 'save') {
       for (const tab of changed) if (!await saveTab(tab)) return false;
       return true;
@@ -663,7 +673,7 @@ async function prepareClose(candidates) {
     if (action === 'discard') {
       // 窗口关闭也会恢复会话，放弃的草稿必须从恢复记录移除。
       for (const tab of changed) {
-        tab.content = ''; tab.dirty = false;
+        tab.content = tab.savedContent || ''; tab.dirty = false;
         if (tab.id === activeId) setDirty(false);
       }
       return true;
@@ -675,18 +685,26 @@ async function prepareClose(candidates) {
   } finally { closePromptActive = false; }
 }
 window.api.on('app:requestClose', async () => {
-  const approved = await prepareClose(tabs);
-  if (approved) persistSession();
+  const approved = await closeAllTabs();
   window.api.finishClose(approved);
 });
 
-async function closeTab(id) {
+let closingTabs = false;
+async function withCloseLock(operation) {
+  if (closingTabs) return false;
+  closingTabs = true;
+  try { return await operation(); } finally { closingTabs = false; }
+}
+function closeTab(id) { return withCloseLock(() => closeTabImpl(id)); }
+function closeAllTabs() { return withCloseLock(closeAllTabsImpl); }
+async function closeTabImpl(id) {
   const idx = tabs.findIndex(t => t.id === id);
   if (idx < 0) return;
   const t = tabs[idx];
 
   if (!await prepareClose([t])) return;
 
+  rememberClosed(t);
   tabs.splice(idx, 1);
   if (activeId === id) {
     activeId = null;
@@ -703,12 +721,14 @@ async function closeTab(id) {
   persistSession();
 }
 
-async function closeAllTabs() {
-  if (!await prepareClose(tabs)) return;
+async function closeAllTabsImpl() {
+  if (!await prepareClose(tabs)) return false;
+  tabs.forEach(rememberClosed);
   tabs = [];
   activeId = null;
   addTab();
   persistSession();
+  return true;
 }
 
 async function newFile() {
@@ -731,14 +751,17 @@ async function saveTab(t, saveAs = false) {
   if (saveAs || !t.path) {
     const r = await window.api.saveAs(content, tabName(t));
     if (!r) return false;
+    if (r.error || r.ok === false || typeof r.path !== 'string') throw new Error(r.error || '保存失败');
     t.path = r.path;
     t.name = '';
   } else {
-    await window.api.save(t.path, content);
+    const result = await window.api.save(t.path, content);
+    if (!result || result.error || result.ok === false) throw new Error(result?.error || '保存失败');
   }
-  t.content = content;
-  t.dirty = false;
-  if (t.id === activeId) { setDirty(false); fileName.textContent = tabName(t); }
+  t.savedContent = content;
+  t.content = t.id === activeId ? view.state.doc.toString() : content;
+  t.dirty = hasUnsavedChanges(t);
+  if (t.id === activeId) { setDirty(t.dirty); fileName.textContent = tabName(t); }
   renderSidebar();
   window.api.rebuildMenu();
   persistSession();
@@ -750,8 +773,10 @@ async function saveFile(saveAs) {
   syncActive();
   const t = activeTab();
   if (!t) return;
-  const ok = await saveTab(t, saveAs);
-  if (ok) toast("已保存");
+  try {
+    const ok = await saveTab(t, saveAs);
+    if (ok) toast("已保存");
+  } catch (error) { toast('保存失败：' + error.message); }
 }
 
 /* ============ 会话持久化（多标签崩溃恢复） ============ */
@@ -770,6 +795,7 @@ function saveDraft() {
     localStorage.setItem(SESSION_KEY, JSON.stringify({
       v: 1,
       activePath: (activeTab() && activeTab().path) || null,
+      activeIndex: tabs.findIndex(tab => tab.id === activeId),
       list: list
     }));
   } catch (e) {
@@ -791,27 +817,125 @@ async function loadDraft() {
 
   const restored = [];
   for (const it of d.list) {
-    let content = it.content;
-    if (!content && it.path) {
+    let baseline = it.path ? null : '';
+    if (it.path) {
       try {
-        const r = await window.api.openPath(it.path);
-        if (r && !r.error) content = r.content || "";
-        else continue;
-      } catch (e) { continue; }
+        const result = await window.api.openPath(it.path);
+        if (result && !result.error) baseline = result.content || '';
+        else if (!it.dirty) continue;
+      } catch { if (!it.dirty) continue; }
     }
-    if (content == null) content = "";
-    restored.push({ path: it.path, name: it.name, content: content, dirty: !!it.dirty });
+    const content = it.dirty && typeof it.content === 'string' ? it.content : (baseline || '');
+    restored.push({ path: it.path, name: it.name, content,
+      savedContent: baseline, dirty: !!it.dirty });
   }
   if (!restored.length) return false;
 
   for (const r of restored) addTab(r);
-  const target = tabs.find(t => t.path === d.activePath);
+  const target = d.activePath ? tabs.find(t => t.path === d.activePath) : tabs[d.activeIndex || 0];
   if (target) switchTab(target.id);
   return true;
 }
 
 function clearDraft() { try { localStorage.removeItem(SESSION_KEY); } catch (e) {} }
 function persistSession() { saveDraft(); }
+
+/* ============ 重命名与最近关闭 ============ */
+const CLOSED_KEY = 'mdx.closedFiles';
+let closedFiles = [];
+try {
+  const stored = JSON.parse(localStorage.getItem(CLOSED_KEY) || '[]');
+  if (Array.isArray(stored)) closedFiles = stored.filter(item => item && typeof item.path === 'string').slice(0, 20);
+} catch {}
+function persistClosed() {
+  try { localStorage.setItem(CLOSED_KEY, JSON.stringify(closedFiles)); } catch {}
+}
+function rememberClosed(tab) {
+  if (!tab.path) return;
+  closedFiles = [{ path: tab.path }, ...closedFiles.filter(item => item.path !== tab.path)].slice(0, 20);
+  persistClosed();
+}
+async function reopenClosed(filename = closedFiles[0]?.path) {
+  if (!filename) { toast('暂无最近关闭的文件'); return false; }
+  try {
+    const existing = tabs.find(tab => tab.path === filename);
+    if (existing) switchTab(existing.id);
+    else {
+      const result = await window.api.openPath(filename);
+      if (!result || result.error) throw new Error(result?.error || '文件无法读取');
+      addTab({ path: result.path, content: result.content || '' });
+    }
+    closedFiles = closedFiles.filter(item => item.path !== filename);
+    persistClosed(); persistSession();
+    return true;
+  } catch (error) { toast('重新打开失败：' + error.message); return false; }
+}
+function documentDialog(id, title) {
+  if (document.querySelector('.modal-mask')) return null;
+  const dialog = document.createElement('div'); dialog.id = id; dialog.className = 'modal-mask show';
+  dialog.innerHTML = `<div class="modal" role="dialog" aria-modal="true" aria-labelledby="${id}-title" style="width:min(520px,100%)"><div class="modal-head"><span class="modal-title" id="${id}-title">${title}</span><button class="ub-btn" data-act="cancel" aria-label="关闭">×</button></div><div class="modal-body"></div><div class="modal-foot"><button class="ub-btn" data-act="cancel">取消</button></div></div>`;
+  const dismiss = () => { dialog.remove(); view.focus(); };
+  dialog.querySelectorAll('[data-act="cancel"]').forEach(button => button.addEventListener('click', dismiss));
+  dialog.addEventListener('keydown', event => {
+    event.stopPropagation();
+    if (event.key === 'Escape' && !dialog.dataset.busy) { event.preventDefault(); dismiss(); }
+  });
+  document.body.appendChild(dialog);
+  return dialog;
+}
+function renameTab(id) {
+  const tab = tabs.find(item => item.id === id); if (!tab) return;
+  const dialog = documentDialog('renameDialog', '重命名文件'); if (!dialog) return;
+  dialog.querySelector('.modal-body').innerHTML = '<label for="renameInput">文件名</label><input class="rename-input" id="renameInput" aria-describedby="renameError" /><p class="rename-error" id="renameError" role="alert"></p>';
+  const input = dialog.querySelector('input'); input.value = tabName(tab);
+  const submit = document.createElement('button'); submit.className = 'ub-btn primary'; submit.textContent = '重命名'; submit.dataset.act = 'rename';
+  dialog.querySelector('.modal-foot').appendChild(submit);
+  submit.addEventListener('click', async () => {
+    if (dialog.dataset.busy) return;
+    let name = input.value.trim();
+    if (name && !name.includes('.')) name += /\.[^.]+$/.exec(tabName(tab))?.[0] || '.md';
+    if (!name || /[<>:"/\\|?*\x00-\x1f]/.test(name) || /[. ]$/.test(name) || /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i.test(name)) {
+      dialog.querySelector('#renameError').textContent = '请输入有效文件名，不要包含路径或特殊字符'; return;
+    }
+    dialog.dataset.busy = '1';
+    dialog.querySelectorAll('button').forEach(button => { button.disabled = true; });
+    try {
+      if (tab.path) {
+        const source = tab.path;
+        const proposed = source.replace(/[^\\/]+$/, name);
+        if (tabs.some(other => other.id !== tab.id && other.path === proposed)) throw new Error('该文件已在其他标签打开');
+        const result = await window.api.rename(source, name);
+        if (!result?.ok) throw new Error(result?.error || '重命名失败');
+        tab.path = result.path; tab.name = '';
+        closedFiles = closedFiles.map(item => item.path === source ? { path: result.path } : item); persistClosed();
+        if (tab.id === activeId) currentPath = tab.path;
+        window.api.rebuildMenu();
+      } else tab.name = name;
+      if (tab.id === activeId) { fileName.textContent = tabName(tab); updateStatus(); renderPreview(true); }
+      renderSidebar(); persistSession(); dialog.remove(); view.focus(); toast('已重命名');
+    } catch (error) { dialog.querySelector('#renameError').textContent = error.message; }
+    finally {
+      delete dialog.dataset.busy;
+      dialog.querySelectorAll('button').forEach(button => { button.disabled = false; });
+    }
+  });
+  input.addEventListener('keydown', event => { if (event.key === 'Enter' && !event.isComposing) { event.preventDefault(); submit.click(); } });
+  input.focus(); input.setSelectionRange(0, Math.max(0, input.value.lastIndexOf('.')) || input.value.length);
+}
+function showClosedHistory() {
+  const dialog = documentDialog('closedHistoryDialog', '最近关闭的文件'); if (!dialog) return;
+  const list = dialog.querySelector('.modal-body'); list.classList.add('closed-files');
+  if (!closedFiles.length) list.textContent = '暂无最近关闭的文件';
+  for (const item of closedFiles) {
+    const button = document.createElement('button'); button.className = 'closed-file';
+    const name = document.createElement('b'); name.textContent = item.path.split(/[\\/]/).pop();
+    const location = document.createElement('span'); location.textContent = item.path;
+    button.append(name, location);
+    button.addEventListener('click', async () => { if (await reopenClosed(item.path)) dialog.remove(); });
+    list.appendChild(button);
+  }
+  (list.querySelector('button') || dialog.querySelector('button')).focus();
+}
 
 /* ============ 侧边栏折叠 ============ */
 function setSidebar(collapsed) {
@@ -860,7 +984,9 @@ function renderSidebar() {
     if (t.dirty) {
       const dot = document.createElement("i");
       dot.className = "sb-dot";
-      name.appendChild(dot);
+      dot.title = '未保存的修改';
+      dot.setAttribute('role', 'img'); dot.setAttribute('aria-label', '未保存');
+      el.appendChild(dot);
     }
 
     const close = document.createElement("button");
@@ -875,7 +1001,12 @@ function renderSidebar() {
     el.addEventListener("click", () => switchTab(t.id));
     el.addEventListener("auxclick", (e) => { if (e.button === 1) closeTab(t.id); });
 
-    el.append(ico, name, close);
+    name.title = '双击重命名';
+    name.addEventListener('dblclick', event => { event.stopPropagation(); renameTab(t.id); });
+    const dot = el.querySelector('.sb-dot');
+    el.replaceChildren(ico, name);
+    if (dot) el.appendChild(dot);
+    el.appendChild(close);
     frag.appendChild(el);
   }
   sbList.replaceChildren(frag);
@@ -1683,6 +1814,10 @@ function openSettings() {
         <div class="set-sec">
           <div class="set-sec-title">文件</div>
           <div class="set-row">
+            <div class="set-label"><b>关闭窗口后留在后台</b><span>保留打开的文档；通过 ${window.api.platform === 'darwin' ? 'Cmd+Q' : 'Ctrl+Q 或设置中的“退出应用”'} 退出时检查全部未保存文件</span></div>
+            <label class="set-switch"><input type="checkbox" data-set="background" disabled /><span class="set-switch-track"></span></label>
+          </div>
+          <div class="set-row">
             <div class="set-label">
               <b>Markdown 文件关联</b>
               <span id="setAssoc">检查中…</span>
@@ -1697,6 +1832,7 @@ function openSettings() {
             <button class="ub-btn" data-act="check-update">检查更新</button>
             <button class="ub-btn" data-act="export-log">导出诊断日志</button>
             <button class="ub-btn" data-act="devtools">开发者工具</button>
+            ${window.api.platform !== 'darwin' ? '<button class="ub-btn" data-act="quit">退出应用</button>' : ''}
           </div>
         </div>
 
@@ -1717,12 +1853,20 @@ function openSettings() {
   dark.checked = document.documentElement.dataset.theme === 'dark';
   mdk.checked = mdKeymapEnabled();
   live.checked = !!liveEdit;
+  const background = dlg.querySelector('[data-set="background"]');
+  window.api.getPreferences().then(value => { background.checked = value.closeToBackground; background.disabled = false; }).catch(() => { background.title = '无法读取关闭设置'; });
 
-  dlg.addEventListener('change', (e) => {
+  dlg.addEventListener('change', async (e) => {
     const t = e.target;
     if (t.dataset.set === 'dark') setTheme(t.checked ? 'dark' : 'light');
     if (t.dataset.set === 'mdkeymap') setMdKeymapEnabled(t.checked);
     if (t.dataset.set === 'liveedit') setLiveEdit(t.checked);
+    if (t.dataset.set === 'background') {
+      t.disabled = true;
+      try { const value = await window.api.setPreferences({ closeToBackground: t.checked }); t.checked = value.closeToBackground; }
+      catch (error) { t.checked = !t.checked; toast('设置保存失败：' + error.message); }
+      finally { t.disabled = false; }
+    }
   });
 
   dlg.addEventListener('click', async (e) => {
@@ -1770,6 +1914,8 @@ function openSettings() {
       return;
     }
 
+    if (act === 'quit') { dlg.remove(); await window.api.quit(); return; }
+
     if (act === 'devtools') {
       dlg.remove();
       try { await window.api.devtools(); } catch (e) { /* 忽略 */ }
@@ -1804,6 +1950,11 @@ const COMMANDS = {
   'cmd:saveAs': () => saveFile(true),
   'cmd:exportHtml': exportHtml,
   'cmd:exportPdf': exportPdf,
+  'cmd:rename': () => renameTab(activeId),
+  'cmd:reopenClosed': () => reopenClosed(),
+  'cmd:closedHistory': showClosedHistory,
+  'cmd:closeAll': closeAllTabs,
+  'cmd:closeTab': () => closeTab(activeId),
   'cmd:find': () => view.dispatch({ effects: [] }),
   'fmt:bold': () => wrap("**", "**"),
   'fmt:italic': () => wrap("*", "*"),
@@ -2008,6 +2159,9 @@ document.getElementById("btnPanel").addEventListener("click", toggleSidebar);
 document.getElementById("btnCollapse").addEventListener("click", toggleSidebar);
 document.getElementById("sbNew").addEventListener("click", () => newFile());
 document.getElementById("sbOpen").addEventListener("click", () => openFile());
+document.getElementById('sbClosedHistory').addEventListener('click', showClosedHistory);
+fileName.addEventListener('dblclick', () => renameTab(activeId));
+fileName.addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); renameTab(activeId); } });
 document.getElementById("sbCloseAll").addEventListener("click", () => closeAllTabs());
 
 /* 侧边栏宽度拖拽；折叠态下双击把手展开 */
@@ -2066,8 +2220,10 @@ document.getElementById("sbCloseAll").addEventListener("click", () => closeAllTa
      Mod-z / Mod-y                         撤销/重做（historyKeymap）
    ============================================ */
 window.addEventListener("keydown", e => {
+  if (e.defaultPrevented || e.target.closest?.('.modal-mask')) return;
   const mod = e.ctrlKey || e.metaKey;
   const k = e.key.toLowerCase();
+  if (window.api.platform !== 'darwin' && mod && !e.shiftKey && !e.altKey && k === 'q') { e.preventDefault(); window.api.quit(); return; }
 
   // 数字键必须看【物理键位】e.code，不能看 e.key ——
   // 按住 Shift 时 e.key 会变成符号（Shift+7 是 '&'、Shift+8 是 '*'、Shift+9 是 '('），
@@ -2092,6 +2248,9 @@ window.addEventListener("keydown", e => {
   if (mod && e.shiftKey && !e.altKey && k === "e") {
     e.preventDefault(); exportHtml(); return;
   }
+
+  if (mod && e.shiftKey && !e.altKey && k === 't') { e.preventDefault(); reopenClosed(); return; }
+  if (e.key === 'F2' && !e.ctrlKey && !e.metaKey && !document.querySelector('.modal-mask')) { e.preventDefault(); renameTab(activeId); return; }
 
   // ---------- 插入 ----------
   if (mod && !e.shiftKey && !e.altKey && k === "t") {
@@ -2166,7 +2325,7 @@ window.addEventListener("keydown", e => {
 });
 
 window.api.on([
-  'cmd:new', 'cmd:open', 'cmd:save', 'cmd:saveAs', 'cmd:exportHtml', 'cmd:exportPdf', 'cmd:find',
+  'cmd:new', 'cmd:open', 'cmd:save', 'cmd:saveAs', 'cmd:exportHtml', 'cmd:exportPdf', 'cmd:rename', 'cmd:reopenClosed', 'cmd:closedHistory', 'cmd:closeAll', 'cmd:closeTab', 'cmd:find',
   'view:edit', 'view:split', 'view:preview', 'view:theme', 'view:liveEdit'
 ], (ch) => {
   const map = {
@@ -2269,6 +2428,8 @@ if (/[?&]test=1/.test(location.search)) {
     toggleOutline,
     closeActiveTab: () => closeTab(activeId),
     closeAllTabs,
+    addTab, switchTab, saveFile, renameTab, reopenClosed, closeTab,
+    tabs: () => tabs.map(t => ({ id: t.id, path: t.path, name: tabName(t), dirty: t.dirty, content: t.content })),
     tabCount: () => tabs.length,
     getDoc: () => view.state.doc.toString(),
     setDoc: (text, cursor) => view.dispatch({

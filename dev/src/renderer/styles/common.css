@@ -141,7 +141,7 @@ body { display: flex; flex-direction: column; user-select: none; }
 .tb-row-1 .tb-right { padding-right: 12px; }
 
 /* 第一行中心标题：绝对定位居中，不受左右集群宽度影响；
-   pointer-events 穿透，中心带仍可拖动窗口 */
+   标题可双击重命名，周围空白处仍可拖动窗口 */
 .tb-title {
   position: absolute;
   top: 50%;
@@ -155,7 +155,9 @@ body { display: flex; flex-direction: column; user-select: none; }
   overflow: hidden;
   text-overflow: ellipsis;
   text-align: center;
-  pointer-events: none;
+  pointer-events: auto;
+  -webkit-app-region: no-drag;
+  cursor: pointer;
 }
 [data-theme="dark"] .tb-title { color: var(--c-900); }
 
@@ -459,7 +461,8 @@ body { display: flex; flex-direction: column; user-select: none; }
 
 /* 未保存标记：文件名右侧圆点 */
 .sb-dot {
-  width: 6px; height: 6px;
+  display: inline-block;
+  width: 7px; height: 7px;
   border-radius: 50%;
   background: var(--warn);
   flex: 0 0 auto;
@@ -1336,3 +1339,10 @@ body { display: flex; flex-direction: column; user-select: none; }
 #outlineList button:hover, #outlineList button.active { background: var(--accent-weak); color: var(--accent); }
 .outline-empty { font-size: 12px; line-height: 1.8; opacity: .6; padding: 8px 14px; }
 @media (max-width: 900px) { .outline { flex-basis: 172px; width: 172px; } }
+
+.rename-input { width: 100%; box-sizing: border-box; padding: 9px 12px; border: 1px solid var(--c-200); border-radius: 6px; background: var(--bg); color: var(--c-900); font: inherit; }
+.rename-error { min-height: 1.6em; color: var(--warn); margin: 8px 0 0; }
+.closed-file { display: flex; flex-direction: column; gap: 4px; width: 100%; padding: 10px; text-align: left; background: transparent; color: inherit; border: 0; border-radius: 6px; cursor: pointer; }
+.closed-file:hover { background: var(--c-100); }
+.closed-file span { opacity: .65; font-size: 11px; overflow-wrap: anywhere; }
+.closed-files { max-height: 50vh; overflow: auto; }

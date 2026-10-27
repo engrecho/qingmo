@@ -1,6 +1,11 @@
 name: Build and release
 on:
   workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish a formal release after verification (false builds preview packages)
+        type: boolean
+        default: false
   push:
     branches: [main]
     paths:
@@ -33,7 +38,7 @@ jobs:
           cache-dependency-path: dev/package-lock.json
       - run: npm ci
       - run: npm run build:renderer && npm run check:bundle && npm run test:startup && npm run test:core && npm run test:live-edit
-      - run: npm run test:lists -- --no-sandbox --disable-gpu && npm run test:close -- --no-sandbox --disable-gpu && npm run test:outline -- --no-sandbox --disable-gpu
+      - run: npm run test:lists -- --no-sandbox --disable-gpu && npm run test:close -- --no-sandbox --disable-gpu && npm run test:outline -- --no-sandbox --disable-gpu && npm run test:documents -- --no-sandbox --disable-gpu
       - if: runner.os == 'macOS'
         run: |
           set -euo pipefail
@@ -78,11 +83,14 @@ jobs:
       - name: Upload, verify and publish
         env:
           GH_TOKEN: ${{ github.token }}
+          PUBLISH_RELEASE: ${{ github.event_name == 'push' || inputs.publish }}
         shell: bash
         run: |
           set -euo pipefail
           version=$(node -p 'require("./dev/package.json").version')
           tag="v${version}"
+          if [ "$PUBLISH_RELEASE" != "true" ]; then tag="${tag}-preview-${GITHUB_RUN_ID}"; fi
+          export RELEASE_TAG="$tag"
           node - <<'NODE'
           const fs=require('fs'),crypto=require('crypto');
           const v=require('./dev/package.json').version;
@@ -107,7 +115,7 @@ jobs:
           gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" --paginate --slurp > /tmp/releases.json
           node - <<'NODE'
           const fs=require('fs');
-          const tag='v'+require('./dev/package.json').version;
+          const tag=process.env.RELEASE_TAG;
           const releases=JSON.parse(fs.readFileSync('/tmp/releases.json')).flat().filter(r=>r.tag_name===tag);
           if(releases.length>1)throw Error('Multiple releases use this tag; resolve duplicates first');
           if(releases[0]&&!releases[0].draft)throw Error('Version already published; refusing to overwrite');
@@ -135,4 +143,8 @@ jobs:
           for(const file of expected){const asset=remote.assets.find(a=>a.name===file.name);if(!asset||asset.size!==file.size||asset.digest!==file.digest)throw Error('Asset verification failed: '+file.name)}
           console.log('All five release assets match local size and SHA256');
           NODE
-          gh api --method PATCH "repos/$GITHUB_REPOSITORY/releases/$release_id" -F draft=false -f make_latest=true --jq .html_url
+          if [ "$PUBLISH_RELEASE" = "true" ]; then
+            gh api --method PATCH "repos/$GITHUB_REPOSITORY/releases/$release_id" -F draft=false -f make_latest=true --jq .html_url
+          else
+            echo "Verified preview draft ID: $release_id (not published)"
+          fi
