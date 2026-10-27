@@ -1,0 +1,72 @@
+name: Publish verified packages
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: Build run containing both verified package artifacts
+        required: true
+permissions:
+  contents: write
+  actions: read
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve source commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          source_sha=$(gh api repos/${{ github.repository }}/actions/runs/${{ inputs.run_id }} --jq .head_sha)
+          echo "SOURCE_SHA=$source_sha" >> "$GITHUB_ENV"
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.SOURCE_SHA }}
+      - uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.run_id }}
+          pattern: packages-*
+          merge-multiple: true
+          path: release/upload
+      - name: Upload, verify and publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          exec > >(tee /tmp/qingmo-release.log) 2>&1
+          trap 'echo "::error::$(tail -n 30 /tmp/qingmo-release.log | tr "\n" " " )"' ERR
+          version=$(node -p 'require("./dev/package.json").version')
+          tag="v${version}"
+          node - <<'NODE'
+          const fs=require('fs'),crypto=require('crypto');
+          const v=require('./dev/package.json').version;
+          const expected=[`QingMo-${v}-mac-arm64.dmg`,`QingMo-${v}-mac-arm64.zip`,`QingMo-${v}-win-setup.exe`,`QingMo-${v}-win-portable.exe`,'latest.yml'];
+          const files=fs.readdirSync('release/upload');
+          if(files.length!==expected.length || expected.some(n=>!files.includes(n))) throw Error('Incomplete release assets');
+          const manifest=expected.map(name=>{const data=fs.readFileSync('release/upload/'+name);return {name,size:data.length,digest:'sha256:'+crypto.createHash('sha256').update(data).digest('hex')}});
+          fs.writeFileSync('/tmp/manifest.json',JSON.stringify(manifest));
+          const yaml=fs.readFileSync('release/upload/latest.yml','utf8');
+          const filename=/^path:\s*(.+)$/m.exec(yaml)?.[1].trim();
+          if(filename!==`QingMo-${v}-win-setup.exe`) throw Error('Update manifest must target the setup installer');
+          const sha512=/^sha512:\s*(.+)$/m.exec(yaml)?.[1].trim();
+          if(sha512!==crypto.createHash('sha512').update(fs.readFileSync('release/upload/'+filename)).digest('base64')) throw Error('Update manifest checksum mismatch');
+          NODE
+          cat > /tmp/notes.md <<'NOTES'
+          - 新增 PDF 导出：工具栏或“文件 → 导出 PDF…”，浅色 A4 分页，支持中文与本地图片。
+          - 文档大纲改用图标，保留悬停提示与开关状态。
+          - README 强调实时预览、预览直接编辑与专注写作，并加入真实功能 GIF。
+
+          提供 Windows x64 安装版 / 便携版、Mac Apple 芯片 DMG / ZIP。Mac 包仅本地签名，未完成 Apple 公证；不支持将 arm64 包用于 Intel Mac。
+          NOTES
+          gh release create "$tag" --target "$SOURCE_SHA" --title "轻墨 ${version}" --notes-file /tmp/notes.md --draft
+          gh release upload "$tag" release/upload/*
+          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$tag" > /tmp/remote.json
+          node - <<'NODE'
+          const fs=require('fs');
+          const expected=JSON.parse(fs.readFileSync('/tmp/manifest.json'));
+          const remote=JSON.parse(fs.readFileSync('/tmp/remote.json'));
+          for(const file of expected){const asset=remote.assets.find(a=>a.name===file.name);if(!asset||asset.size!==file.size||asset.digest!==file.digest)throw Error('Asset verification failed: '+file.name)}
+          console.log('All five release assets match local size and SHA256');
+          NODE
+          gh release edit "$tag" --draft=false --latest
