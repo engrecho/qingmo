@@ -19,7 +19,7 @@ app.whenReady().then(async()=>{
  await js(`window.__qingmo.setDoc(${JSON.stringify(text)})`);await wait();
  await js("document.documentElement.dataset.theme='dark'");
  fs.writeFileSync(path.join(tmp,'outline.png'),(await win.webContents.capturePage()).toPNG());
- fs.copyFileSync(path.join(tmp,'outline.png'),'/tmp/qingmo-outline-preview.png');
+ fs.copyFileSync(path.join(tmp,'outline.png'),path.join(os.tmpdir(),'qingmo-outline-preview.png'));
  win.destroy();fs.rmSync(tmp,{recursive:true,force:true});app.exit(0);
  }catch(e){console.error(e);win.destroy();fs.rmSync(tmp,{recursive:true,force:true});app.exit(1)}
 });
