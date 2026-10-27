@@ -93,7 +93,27 @@
         "nsis",
         "portable"
       ],
-      "icon": "build/icons/icon.ico"
+      "icon": "build/icons/icon.ico",
+      "fileAssociations": [
+        {
+          "ext": [
+            "md",
+            "markdown",
+            "mdown",
+            "mkd",
+            "mkdn",
+            "mdtxt",
+            "mdtext"
+          ],
+          "name": "Markdown",
+          "description": "Markdown 文档",
+          "mimeType": "text/markdown",
+          "role": "Editor",
+          "rank": "Owner",
+          "isPackage": false,
+          "icon": "build/icons/icon"
+        }
+      ]
     },
     "mac": {
       "target": [
@@ -111,28 +131,27 @@
         "CFBundleName": "轻墨",
         "NSHumanReadableCopyright": "MIT License"
       },
-      "artifactName": "${productName}-${version}-mac-${arch}.${ext}"
+      "artifactName": "${productName}-${version}-mac-${arch}.${ext}",
+      "fileAssociations": [
+        {
+          "ext": [
+            "md",
+            "markdown",
+            "mdown",
+            "mkd",
+            "mkdn",
+            "mdtxt",
+            "mdtext"
+          ],
+          "name": "Markdown",
+          "description": "Markdown 文档",
+          "mimeType": "text/markdown",
+          "role": "Editor",
+          "rank": "Owner",
+          "isPackage": false
+        }
+      ]
     },
-    "fileAssociations": [
-      {
-        "ext": [
-          "md",
-          "markdown",
-          "mdown",
-          "mkd",
-          "mkdn",
-          "mdtxt",
-          "mdtext"
-        ],
-        "name": "Markdown",
-        "description": "Markdown 文档",
-        "mimeType": "text/markdown",
-        "role": "Editor",
-        "rank": "Owner",
-        "isPackage": false,
-        "icon": "build/icons/icon"
-      }
-    ],
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
