@@ -1,10 +1,12 @@
-## v1.6.8（未发布）
+## v1.6.8
 
 - 新增 PDF 导出：工具栏和文件菜单均可打开，输出浅色 A4 多页文档，支持本地图片，处理取消、图片失败与写入错误。
 - 大纲入口改为线性图标，保留悬停说明、无障碍名称及开关状态。
 - 修正 Mac 打包时应用图标与文档关联图标同名导致的硬链接冲突，文档图标继续复用应用 ICNS。
 - README 前置实时预览、简洁专注和预览直接编辑的介绍，加入真实功能 GIF 与视频转制动画。
-- 当前仅完成源码与云环境验证；Mac/Windows 安装包和正式发布尚未完成。
+- 已发布：[GitHub Release](https://github.com/engrecho/qingmo/releases/tag/v1.6.8)。Mac Apple 芯片 DMG / ZIP、Windows x64 安装版 / 便携版及 latest.yml 共 5 个文件，通过构建产物大小、SHA256 和更新清单 SHA512 校验。
+- 双端原生构建、编辑核心、预览编辑、列表、关闭与大纲回归通过；Mac 额外验证真实 PDF 中文、多页 A4、本地图片、取消与写入失败，并完成本地签名及 ZIP 结构校验。Mac 未进行 Apple 公证。
+- 构建源码标签指向 `3d67dbf`；[原生构建](https://github.com/engrecho/qingmo/actions/runs/40536209722)与[发布校验](https://github.com/engrecho/qingmo/actions/runs/40537719232)均留有记录。
 
 ## v1.6.7
 

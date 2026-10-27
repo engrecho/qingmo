@@ -11,3 +11,5 @@
 11. README 功能 GIF 用 `dev/scripts/capture-readme-gifs.js` 从隔离的真实渲染器生成，需 FFmpeg；验证源码输入到预览、主题切换及预览输入回写源码。上传视频转制动画仅作视觉介绍，不标为应用操作录像。复现见 docs/截图说明.md。
 
 12. PDF / HTML 导出共用渲染与本地图片嵌入逻辑；PDF 必须通过独立沙盒窗口的受限 CSP 打印为浅色 A4，清理临时 HTML 与隐藏窗口，取消不输出，失败明确提示。回归 `test:pdf` 需 Electron 和 Poppler 工具，包含实际 PDF 文本、分页与图片检查。
+
+13. 发布使用 GitHub Actions 原生 Mac/Windows 构建；可用 publish.yml 复用双端成功的构建产物。草稿按数字 Release ID 校验与发布，避免 tag 查询 404 导致重复草稿；不得覆盖已发布版本或跳过资产 SHA256、更新清单 SHA512 校验。Mac 本地签名不等于 Apple 公证。
