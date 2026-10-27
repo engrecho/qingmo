@@ -1803,6 +1803,7 @@ const COMMANDS = {
   'cmd:save': () => saveFile(false),
   'cmd:saveAs': () => saveFile(true),
   'cmd:exportHtml': exportHtml,
+  'cmd:exportPdf': exportPdf,
   'cmd:find': () => view.dispatch({ effects: [] }),
   'fmt:bold': () => wrap("**", "**"),
   'fmt:italic': () => wrap("*", "*"),
@@ -1830,7 +1831,7 @@ function run(cmd) {
   if (fn) fn();
 }
 
-async function exportHtml() {
+async function buildExportDocument(format) {
   const css = `
     :root { color-scheme: light dark }
     * { box-sizing: border-box }
@@ -1884,7 +1885,7 @@ async function exportHtml() {
     hr { margin: 2.6em 0; border: none; height: 1px; background: #e4e7ec }
     img { max-width: 100%; border-radius: 7px }
 
-    @media (prefers-color-scheme: dark) {
+    @media screen and (prefers-color-scheme: dark) {
       body { background: #16181c; color: #e9edf3 }
       h2, hr { border-color: #2b3038 }
       code { background: #23272e }
@@ -1896,21 +1897,40 @@ async function exportHtml() {
       tbody tr:nth-child(even) { background: #191c21 }
       a { color: #5b8cff; border-bottom-color: #2f4470 }
       li::marker { color: #79828f }
+    }
+    @media print {
+      :root { color-scheme: light }
+      body { max-width: none; padding: 0; color: #1a1d23; background: #fff; font-size: 11pt }
+      h1, h2, h3, h4, h5, h6 { break-after: avoid }
+      pre { white-space: pre-wrap; overflow-wrap: anywhere }
+      img { max-height: 240mm; object-fit: contain; break-inside: avoid }
+      tr, blockquote { break-inside: avoid }
+      thead { display: table-header-group }
     }`;
   const title = currentPath ? currentPath.split(/[\\/]/).pop() : 'untitled';
   const body = document.createElement('div');
   body.innerHTML = imageHtml(marked.parse(view.state.doc.toString()), html => DOMPurify.sanitize(html));
   await loadLocalImages(body, currentPath, (source, doc) => window.api.readImage(source, doc));
+  if (format === 'PDF' && body.querySelector('img[data-qingmo-image]:not([src])')) throw new Error('本地图片读取失败，请检查图片路径后重试');
   body.querySelectorAll('[data-qingmo-image]').forEach(image => image.removeAttribute('data-qingmo-image'));
   const html = `<!DOCTYPE html>
 <html lang="zh-CN"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${escapeHtml(title)}</title><style>${css}</style></head>
 <body>${body.innerHTML}</body></html>`;
-  window.api.exportHtml(html, title.replace(/\.md$/i, '')).then(r => {
-    if (r) toast("已导出 HTML");
-  });
+  return { html, name: title.replace(/\.md$/i, '') };
 }
+
+async function exportDocument(format) {
+  try {
+    const { html, name } = await buildExportDocument(format);
+    const result = format === 'PDF' ? await window.api.exportPdf(html, name) : await window.api.exportHtml(html, name);
+    if (result && result.ok) toast('已导出 ' + format);
+    else if (result && result.error) toast('导出失败：' + result.error);
+  } catch (error) { toast('导出失败：' + (error.message || '请重试')); }
+}
+function exportHtml() { return exportDocument('HTML'); }
+function exportPdf() { return exportDocument('PDF'); }
 
 function escapeHtml(s) {
   return s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -2146,7 +2166,7 @@ window.addEventListener("keydown", e => {
 });
 
 window.api.on([
-  'cmd:new', 'cmd:open', 'cmd:save', 'cmd:saveAs', 'cmd:exportHtml', 'cmd:find',
+  'cmd:new', 'cmd:open', 'cmd:save', 'cmd:saveAs', 'cmd:exportHtml', 'cmd:exportPdf', 'cmd:find',
   'view:edit', 'view:split', 'view:preview', 'view:theme', 'view:liveEdit'
 ], (ch) => {
   const map = {

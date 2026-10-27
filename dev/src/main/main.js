@@ -174,6 +174,7 @@ function buildMenu() {
         { label: '保存', accelerator: 'CmdOrCtrl+S', click: send('cmd:save') },
         { label: '另存为…', accelerator: 'CmdOrCtrl+Shift+S', click: send('cmd:saveAs') },
         { type: 'separator' },
+        { label: '导出 PDF…', click: send('cmd:exportPdf') },
         { label: '导出 HTML', accelerator: 'CmdOrCtrl+Shift+E', click: send('cmd:exportHtml') },
         { type: 'separator' },
         platform.quitMenuItem
@@ -497,6 +498,10 @@ ipcMain.handle('fs:exportHtml', async (_e, html, suggestedName) => {
   fs.writeFileSync(r.filePath, html, 'utf-8');
   return { ok: true, path: r.filePath };
 });
+
+ipcMain.handle('fs:exportPdf', (_e, html, suggestedName) => require('./pdf-export').exportPdf({
+  BrowserWindow, dialog, parent: win, documents: app.getPath('documents'), html, suggestedName
+}));
 
 ipcMain.handle('app:rebuildMenu', () => { buildMenu(); return recentList; });
 

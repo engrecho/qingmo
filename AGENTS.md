@@ -7,3 +7,7 @@
 8. 未保存关闭统一三按钮与放弃二次确认；Esc 默认返回编辑器。窗口关闭必须等待渲染层保存检查，不可直接销毁窗口。回归 `test:close`，发布流程见 docs/发布指南.md。
 9. 大纲使用 Markdown 语法树提取标题，排除代码块，开关存于 mdx.outline。文件关联图标使用无扩展名 build/icons/icon，由构建器分别选择 ICNS / ICO。回归 test:outline，发布前验证 Mac CFBundleTypeIconFile。
 10. README 截图必须由真实渲染器和公开示例生成，不使用用户文档；通过 capture-readme.js 隔离会话并验证预览输入同步。纯文档与截图更新无需重新打包。
+
+11. README 功能 GIF 用 `dev/scripts/capture-readme-gifs.js` 从隔离的真实渲染器生成，需 FFmpeg；验证源码输入到预览、主题切换及预览输入回写源码。上传视频转制动画仅作视觉介绍，不标为应用操作录像。复现见 docs/截图说明.md。
+
+12. PDF / HTML 导出共用渲染与本地图片嵌入逻辑；PDF 必须通过独立沙盒窗口的受限 CSP 打印为浅色 A4，清理临时 HTML 与隐藏窗口，取消不输出，失败明确提示。回归 `test:pdf` 需 Electron 和 Poppler 工具，包含实际 PDF 文本、分页与图片检查。

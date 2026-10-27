@@ -9,6 +9,7 @@ contextBridge.exposeInMainWorld('api', {
   openPath: (p) => ipcRenderer.invoke('fs:openPath', p),
   save: (p, c) => ipcRenderer.invoke('fs:save', p, c),
   saveAs: (c, name) => ipcRenderer.invoke('fs:saveAs', c, name),
+  exportPdf: (html, name) => ipcRenderer.invoke('fs:exportPdf', html, name),
   exportHtml: (html, name) => ipcRenderer.invoke('fs:exportHtml', html, name),
   rebuildMenu: () => ipcRenderer.invoke('app:rebuildMenu'),
   checkUpdate: () => ipcRenderer.invoke('app:checkUpdate'),

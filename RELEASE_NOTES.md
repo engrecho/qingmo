@@ -1,3 +1,10 @@
+## v1.6.8（未发布）
+
+- 新增 PDF 导出：工具栏和文件菜单均可打开，输出浅色 A4 多页文档，支持本地图片，处理取消、图片失败与写入错误。
+- 大纲入口改为线性图标，保留悬停说明、无障碍名称及开关状态。
+- README 前置实时预览、简洁专注和预览直接编辑的介绍，加入真实功能 GIF 与视频转制动画。
+- 当前仅完成源码与云环境验证；Mac/Windows 安装包和正式发布尚未完成。
+
 ## v1.6.7
 
 已发布：[GitHub Release](https://github.com/engrecho/qingmo/releases/tag/v1.6.7)。Mac Apple 芯片 DMG / ZIP、Windows x64 安装版 / 便携版及 latest.yml 共 5 个远程文件，均已通过大小与 SHA256 比对。源码、README 和三张真实截图同步至 main。

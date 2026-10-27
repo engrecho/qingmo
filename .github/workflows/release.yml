@@ -1,0 +1,114 @@
+name: Build and release
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - dev/package.json
+      - .github/workflows/release.yml
+permissions:
+  contents: write
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-14, windows-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: dev
+        shell: bash
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: dev/package-lock.json
+      - run: npm ci
+      - run: npm run build:renderer && npm run check:bundle && npm run test:startup && npm run test:core && npm run test:live-edit
+      - run: npm run test:lists -- --no-sandbox --disable-gpu && npm run test:close -- --no-sandbox --disable-gpu && npm run test:outline -- --no-sandbox --disable-gpu
+      - if: runner.os == 'macOS'
+        run: |
+          brew install poppler
+          npm run test:pdf -- --no-sandbox --disable-gpu
+          npx electron-builder --mac --arm64 --dir --publish never
+          codesign --force --deep --sign - ../dist/mac-arm64/轻墨.app
+          codesign --verify --deep --strict ../dist/mac-arm64/轻墨.app
+          npx electron-builder --mac --arm64 --prepackaged ../dist/mac-arm64/轻墨.app --publish never
+          node scripts/verify-asar.js ../dist/mac-arm64/轻墨.app/Contents/Resources/app.asar
+          node scripts/publish.js mac
+          node scripts/verify-mac.js
+          version=$(node -p 'require("./package.json").version')
+          mkdir -p ../release/upload
+          cp "../release/macos/轻墨-${version}-mac-arm64.dmg" "../release/upload/QingMo-${version}-mac-arm64.dmg"
+          cp "../release/macos/轻墨-${version}-mac-arm64.zip" "../release/upload/QingMo-${version}-mac-arm64.zip"
+      - if: runner.os == 'Windows'
+        run: |
+          npx electron-builder --win --x64 --publish never
+          node scripts/verify-asar.js ../dist/win-unpacked/resources/app.asar
+          node scripts/publish.js win
+          mkdir -p ../release/upload
+          cp ../release/windows/*.exe ../release/upload/
+          cp ../release/windows/latest.yml ../release/upload/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: packages-${{ runner.os }}
+          path: release/upload/*
+          if-no-files-found: error
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: packages-*
+          merge-multiple: true
+          path: release/upload
+      - name: Upload, verify and publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          version=$(node -p 'require("./dev/package.json").version')
+          tag="v${version}"
+          node - <<'NODE'
+          const fs=require('fs'),crypto=require('crypto');
+          const v=require('./dev/package.json').version;
+          const expected=[`QingMo-${v}-mac-arm64.dmg`,`QingMo-${v}-mac-arm64.zip`,`QingMo-${v}-win-setup.exe`,`QingMo-${v}-win-portable.exe`,'latest.yml'];
+          const files=fs.readdirSync('release/upload');
+          if(files.length!==expected.length || expected.some(n=>!files.includes(n))) throw Error('Incomplete release assets');
+          const manifest=expected.map(name=>{const data=fs.readFileSync('release/upload/'+name);return {name,size:data.length,digest:'sha256:'+crypto.createHash('sha256').update(data).digest('hex')}});
+          fs.writeFileSync('/tmp/manifest.json',JSON.stringify(manifest));
+          const yaml=fs.readFileSync('release/upload/latest.yml','utf8');
+          const filename=/^path:\s*(.+)$/m.exec(yaml)?.[1].trim();
+          if(filename!==`QingMo-${v}-win-setup.exe`) throw Error('Update manifest must target the setup installer');
+          const sha512=/^sha512:\s*(.+)$/m.exec(yaml)?.[1].trim();
+          if(sha512!==crypto.createHash('sha512').update(fs.readFileSync('release/upload/'+filename)).digest('base64')) throw Error('Update manifest checksum mismatch');
+          NODE
+          cat > /tmp/notes.md <<'NOTES'
+          - 新增 PDF 导出：工具栏或“文件 → 导出 PDF…”，浅色 A4 分页，支持中文与本地图片。
+          - 文档大纲改用图标，保留悬停提示与开关状态。
+          - README 强调实时预览、预览直接编辑与专注写作，并加入真实功能 GIF。
+
+          提供 Windows x64 安装版 / 便携版、Mac Apple 芯片 DMG / ZIP。Mac 包仅本地签名，未完成 Apple 公证；不支持将 arm64 包用于 Intel Mac。
+          NOTES
+          gh release create "$tag" --target "$GITHUB_SHA" --title "轻墨 ${version}" --notes-file /tmp/notes.md --draft
+          gh release upload "$tag" release/upload/*
+          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$tag" > /tmp/remote.json
+          node - <<'NODE'
+          const fs=require('fs');
+          const expected=JSON.parse(fs.readFileSync('/tmp/manifest.json'));
+          const remote=JSON.parse(fs.readFileSync('/tmp/remote.json'));
+          for(const file of expected){const asset=remote.assets.find(a=>a.name===file.name);if(!asset||asset.size!==file.size||asset.digest!==file.digest)throw Error('Asset verification failed: '+file.name)}
+          console.log('All five release assets match local size and SHA256');
+          NODE
+          gh release edit "$tag" --draft=false --latest
