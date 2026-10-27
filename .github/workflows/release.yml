@@ -5,7 +5,6 @@ on:
     branches: [main]
     paths:
       - dev/package.json
-      - .github/workflows/release.yml
 permissions:
   contents: write
 concurrency:
@@ -105,14 +104,35 @@ jobs:
 
           提供 Windows x64 安装版 / 便携版、Mac Apple 芯片 DMG / ZIP。Mac 包仅本地签名，未完成 Apple 公证；不支持将 arm64 包用于 Intel Mac。
           NOTES
-          gh release create "$tag" --target "$GITHUB_SHA" --title "轻墨 ${version}" --notes-file /tmp/notes.md --draft
-          gh release upload "$tag" release/upload/*
-          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$tag" > /tmp/remote.json
+          gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" --paginate --slurp > /tmp/releases.json
+          node - <<'NODE'
+          const fs=require('fs');
+          const tag='v'+require('./dev/package.json').version;
+          const releases=JSON.parse(fs.readFileSync('/tmp/releases.json')).flat().filter(r=>r.tag_name===tag);
+          if(releases.length>1)throw Error('Multiple releases use this tag; resolve duplicates first');
+          if(releases[0]&&!releases[0].draft)throw Error('Version already published; refusing to overwrite');
+          const existing=releases[0];
+          const target=process.env.SOURCE_SHA||process.env.GITHUB_SHA;
+          if(existing&&existing.target_commitish!==target)throw Error('Draft targets a different source commit');
+          const manifest=JSON.parse(fs.readFileSync('/tmp/manifest.json'));
+          const missing=[];
+          for(const file of manifest){const asset=existing?.assets.find(a=>a.name===file.name);if(!asset)missing.push(file.name);else if(asset.size!==file.size||asset.digest!==file.digest)throw Error('Existing draft asset differs: '+file.name)}
+          fs.writeFileSync('/tmp/release-id',existing?String(existing.id):'');
+          fs.writeFileSync('/tmp/missing.txt',missing.join('\n')+(missing.length?'\n':''));
+          fs.writeFileSync('/tmp/create.json',JSON.stringify({tag_name:tag,target_commitish:target,name:'轻墨 '+tag.slice(1),body:fs.readFileSync('/tmp/notes.md','utf8'),draft:true}));
+          NODE
+          release_id=$(cat /tmp/release-id)
+          if [ -z "$release_id" ]; then
+            release_id=$(gh api --method POST "repos/$GITHUB_REPOSITORY/releases" --input /tmp/create.json --jq .id)
+          fi
+          while IFS= read -r asset; do gh release upload "$tag" "release/upload/$asset"; done < /tmp/missing.txt
+          gh api "repos/$GITHUB_REPOSITORY/releases/$release_id" > /tmp/remote.json
           node - <<'NODE'
           const fs=require('fs');
           const expected=JSON.parse(fs.readFileSync('/tmp/manifest.json'));
           const remote=JSON.parse(fs.readFileSync('/tmp/remote.json'));
+          if(remote.assets.length!==expected.length)throw Error('Unexpected release asset count');
           for(const file of expected){const asset=remote.assets.find(a=>a.name===file.name);if(!asset||asset.size!==file.size||asset.digest!==file.digest)throw Error('Asset verification failed: '+file.name)}
           console.log('All five release assets match local size and SHA256');
           NODE
-          gh release edit "$tag" --draft=false --latest
+          gh api --method PATCH "repos/$GITHUB_REPOSITORY/releases/$release_id" -F draft=false -f make_latest=true --jq .html_url
