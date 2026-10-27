@@ -8,6 +8,7 @@
 - 关闭全部与二次放弃提示列出具体未保存文件名及路径。
 - 最近关闭记录保留 20 个文件路径，支持列表选择与 Ctrl/Cmd+Shift+T，跨重启保留；重新打开读取磁盘，不恢复明确放弃的修改。
 - 新增 `test:documents` 覆盖文件状态、重命名、历史、后台关闭与退出检查。
+- Mac / Windows 原生回归和构建已通过：[CI 40543434697](https://github.com/engrecho/qingmo/actions/runs/40543434697)。测试包位于 release/macos/preview-1.6.9 和 release/windows/preview-1.6.9，五个文件均通过大小、SHA256 校验。正式版仍为 1.6.8。
 
 ## v1.6.8
 
