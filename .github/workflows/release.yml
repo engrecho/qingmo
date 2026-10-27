@@ -36,6 +36,9 @@ jobs:
       - run: npm run test:lists -- --no-sandbox --disable-gpu && npm run test:close -- --no-sandbox --disable-gpu && npm run test:outline -- --no-sandbox --disable-gpu
       - if: runner.os == 'macOS'
         run: |
+          set -euo pipefail
+          exec > >(tee /tmp/qingmo-mac-build.log) 2>&1
+          trap 'echo "::error::$(tail -n 25 /tmp/qingmo-mac-build.log | tr "\n" " " )"' ERR
           brew install poppler
           npm run test:pdf -- --no-sandbox --disable-gpu
           npx electron-builder --mac --arm64 --dir --publish never
