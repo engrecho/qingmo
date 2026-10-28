@@ -145,6 +145,8 @@ macOS 使用 **Cmd**，Windows 使用 **Ctrl**。
 
 ## 常见问题
 
+> 更新提示：1.6.9 及更早版本的下载器遇到 GitHub 重定向可能报错，请先从 [v1.6.10 发布页](https://github.com/engrecho/qingmo/releases/tag/v1.6.10) 手动下载安装一次；新版本已修复该问题。
+
 <details>
 <summary><strong>免费使用需要登录或上传文档吗？</strong></summary>
 
@@ -199,5 +201,3 @@ npm --prefix dev start
   <img src="docs/assets/support-qr.png" width="230" alt="作者提供的自愿打赏二维码" /><br />
   <sub>扫码前请在支付平台确认收款对象。打赏不兑换付费权益。</sub>
 </p>
-
-> 更新提示：1.6.9 及更早版本的下载器遇到 GitHub 重定向可能报错，请先从 [v1.6.10 发布页](https://github.com/engrecho/qingmo/releases/tag/v1.6.10) 手动下载安装一次；新版本已修复该问题。

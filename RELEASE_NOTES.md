@@ -1,5 +1,7 @@
 ## v1.6.10
 
+已发布：[GitHub Release](https://github.com/engrecho/qingmo/releases/tag/v1.6.10)。[原生 CI 40720288420](https://github.com/engrecho/qingmo/actions/runs/40720288420) 的 Mac / Windows 构建与回归全部通过，源码标签为 `afe29ca`。五个发布文件均完成大小、SHA256 和更新清单 SHA512 比对，本地交付位于 release/macos 和 release/windows。
+
 - 修复自动更新下载报 `Redirect was cancelled`：Electron 33 的 net.fetch 不支持预期的手动重定向，改用 net.request 逐跳读取 Location；保留官方来源限制、超时、大小与 SHA256 校验。
 - 同步修复 GitHub API 限流时的备用版本检查。
 - 补齐 macOS「修复文件关联」：使用原生 Launch Services 查询及设置默认应用，不再调用 Windows 注册表；覆盖七种 Markdown 扩展名。
