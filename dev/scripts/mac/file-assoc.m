@@ -20,10 +20,15 @@ int main(int argc, const char *argv[]) {
       CFStringRef type = UTTypeCreatePreferredIdentifierForTag(kUTTagClassFilenameExtension, (__bridge CFStringRef)ext, kUTTypePlainText);
       OSStatus status = registration;
       if (!type) status = paramErr;
-      else if (repair && status == noErr) status = LSSetDefaultRoleHandlerForContentType(type, kLSRolesAll, (__bridge CFStringRef)bundle);
+      else if (repair && status == noErr) {
+        // Existing role-specific choices override LSHandlerRoleAll. Set the two
+        // document roles explicitly, then let a fresh process verify the result.
+        status = LSSetDefaultRoleHandlerForContentType(type, kLSRolesEditor, (__bridge CFStringRef)bundle);
+        if (status == noErr) status = LSSetDefaultRoleHandlerForContentType(type, kLSRolesViewer, (__bridge CFStringRef)bundle);
+      }
       NSString *handler = type ? CFBridgingRelease(LSCopyDefaultRoleHandlerForContentType(type, kLSRolesEditor)) : nil;
       BOOL isQingMo = [handler caseInsensitiveCompare:bundle] == NSOrderedSame && handler != nil;
-      [results addObject:@{@"ext":ext, @"progid":handler ?: @"(未关联)", @"isQingMo":@(isQingMo), @"ok":@(status == noErr && (!repair || isQingMo)), @"status":@(status)}];
+      [results addObject:@{@"ext":ext, @"progid":handler ?: @"(未关联)", @"isQingMo":@(isQingMo), @"ok":@(status == noErr), @"status":@(status)}];
       if (type) CFRelease(type);
     }
     NSData *json = [NSJSONSerialization dataWithJSONObject:results options:0 error:nil];

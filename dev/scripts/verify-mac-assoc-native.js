@@ -8,6 +8,12 @@ const helper = path.join(app, 'Contents/Resources/mac/file-assoc');
 const run = action => JSON.parse(execFileSync(helper, [action, ...(action === 'register' ? [app] : [])], { encoding: 'utf8', timeout: 15000 }));
 assert.equal(run('check').length, 7);
 const registered = run('register');
-assert(registered.every(row => row.ok && row.isQingMo), JSON.stringify(registered));
-assert(run('check').every(row => row.isQingMo));
+assert(registered.every(row => row.ok), JSON.stringify(registered));
+let checked;
+for (let attempt = 0; attempt < 12; attempt++) {
+  checked = run('check');
+  if (checked.every(row => row.isQingMo)) break;
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 250);
+}
+assert(checked.every(row => row.isQingMo), JSON.stringify(checked));
 console.log('PASS macOS native Launch Services register + check for all seven Markdown extensions');

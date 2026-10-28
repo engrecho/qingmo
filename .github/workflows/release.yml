@@ -66,10 +66,12 @@ jobs:
           trap 'echo "::error::$(tail -n 25 /tmp/qingmo-mac-build.log | tr "\n" " " )"' ERR
           brew install poppler
           npm run test:pdf -- --no-sandbox --disable-gpu
+          npx electron-builder --mac --x64 --dir --publish never
+          codesign --force --deep --sign - ../dist/mac/轻墨.app
+          node scripts/verify-mac-assoc-native.js ../dist/mac/轻墨.app
           npx electron-builder --mac --arm64 --dir --publish never
           codesign --force --deep --sign - ../dist/mac-arm64/轻墨.app
           codesign --verify --deep --strict ../dist/mac-arm64/轻墨.app
-          node scripts/verify-mac-assoc-native.js ../dist/mac-arm64/轻墨.app
           npx electron-builder --mac --arm64 --prepackaged ../dist/mac-arm64/轻墨.app --publish never
           node scripts/verify-asar.js ../dist/mac-arm64/轻墨.app/Contents/Resources/app.asar
           node scripts/publish.js mac

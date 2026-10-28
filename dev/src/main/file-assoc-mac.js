@@ -21,8 +21,16 @@ function createMacFileAssoc({ app, execute = run, resources = process.resourcesP
   return {
     check: () => invoke('check'),
     register: async () => {
-      const results = await invoke('register');
-      return { ok: results.every(r => r.ok && r.isQingMo), results };
+      const registered = await invoke('register');
+      let results = registered;
+      // Launch Services may propagate defaults asynchronously. Query from a new
+      // helper process rather than relying on the setter process's cached view.
+      for (let attempt = 0; attempt < 6; attempt++) {
+        results = await invoke('check');
+        if (results.every(r => r.isQingMo)) break;
+        await new Promise(resolve => setTimeout(resolve, 250));
+      }
+      return { ok: registered.every(r => r.ok) && results.every(r => r.isQingMo), results };
     }
   };
 }
