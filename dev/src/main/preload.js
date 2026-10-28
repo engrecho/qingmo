@@ -1,6 +1,10 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('api', {
+  quit: () => ipcRenderer.invoke('app:quit'),
+  getPreferences: () => ipcRenderer.invoke('app:getPreferences'),
+  setPreferences: patch => ipcRenderer.invoke('app:setPreferences', patch),
+  rename: (source, name) => ipcRenderer.invoke('fs:rename', source, name),
   confirmClose: names => ipcRenderer.invoke('app:confirmClose', names),
   finishClose: approved => ipcRenderer.send('app:finishClose', approved),
   open: () => ipcRenderer.invoke('fs:open'),

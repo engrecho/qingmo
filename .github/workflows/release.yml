@@ -1,6 +1,11 @@
 name: Build and release
 on:
   workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish a formal release after verification (false builds preview packages)
+        type: boolean
+        default: false
   push:
     branches: [main]
     paths:
@@ -33,7 +38,20 @@ jobs:
           cache-dependency-path: dev/package-lock.json
       - run: npm ci
       - run: npm run build:renderer && npm run check:bundle && npm run test:startup && npm run test:core && npm run test:live-edit
-      - run: npm run test:lists -- --no-sandbox --disable-gpu && npm run test:close -- --no-sandbox --disable-gpu && npm run test:outline -- --no-sandbox --disable-gpu
+      - name: Document interaction regressions
+        timeout-minutes: 5
+        run: |
+          set -euo pipefail
+          exec > >(tee /tmp/qingmo-interactions.log) 2>&1
+          trap 'echo "::error::$(tail -n 35 /tmp/qingmo-interactions.log | tr "\n" " " )"' ERR
+          echo "::notice::Running list regression"
+          npm run test:lists -- --no-sandbox --disable-gpu
+          echo "::notice::Running close regression"
+          npm run test:close -- --no-sandbox --disable-gpu
+          echo "::notice::Running outline regression"
+          npm run test:outline -- --no-sandbox --disable-gpu
+          echo "::notice::Running document lifecycle regression"
+          npm run test:documents -- --no-sandbox --disable-gpu
       - if: runner.os == 'macOS'
         run: |
           set -euo pipefail
@@ -78,11 +96,14 @@ jobs:
       - name: Upload, verify and publish
         env:
           GH_TOKEN: ${{ github.token }}
+          PUBLISH_RELEASE: ${{ github.event_name == 'push' || inputs.publish }}
         shell: bash
         run: |
           set -euo pipefail
           version=$(node -p 'require("./dev/package.json").version')
           tag="v${version}"
+          if [ "$PUBLISH_RELEASE" != "true" ]; then tag="${tag}-preview-${GITHUB_RUN_ID}"; fi
+          export RELEASE_TAG="$tag"
           node - <<'NODE'
           const fs=require('fs'),crypto=require('crypto');
           const v=require('./dev/package.json').version;
@@ -97,17 +118,18 @@ jobs:
           const sha512=/^sha512:\s*(.+)$/m.exec(yaml)?.[1].trim();
           if(sha512!==crypto.createHash('sha512').update(fs.readFileSync('release/upload/'+filename)).digest('base64')) throw Error('Update manifest checksum mismatch');
           NODE
-          cat > /tmp/notes.md <<'NOTES'
-          - 新增 PDF 导出：工具栏或“文件 → 导出 PDF…”，浅色 A4 分页，支持中文与本地图片。
-          - 文档大纲改用图标，保留悬停提示与开关状态。
-          - README 强调实时预览、预览直接编辑与专注写作，并加入真实功能 GIF。
-
-          提供 Windows x64 安装版 / 便携版、Mac Apple 芯片 DMG / ZIP。Mac 包仅本地签名，未完成 Apple 公证；不支持将 arm64 包用于 Intel Mac。
-          NOTES
+          node - <<'NODE'
+          const fs=require('fs');
+          const version=require('./dev/package.json').version;
+          const section=fs.readFileSync('RELEASE_NOTES.md','utf8').split(/\n## /)[0];
+          if(!section.startsWith('## v'+version))throw Error('Release notes do not match package version');
+          const notes=section.replace(/^##[^\n]*\n/,'').trim();
+          fs.writeFileSync('/tmp/notes.md',notes+'\n\n提供 Windows x64 安装版 / 便携版、Mac Apple 芯片 DMG / ZIP。Mac 包仅本地签名，未完成 Apple 公证；Intel Mac 请勿使用 arm64 包。\n');
+          NODE
           gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" --paginate --slurp > /tmp/releases.json
           node - <<'NODE'
           const fs=require('fs');
-          const tag='v'+require('./dev/package.json').version;
+          const tag=process.env.RELEASE_TAG;
           const releases=JSON.parse(fs.readFileSync('/tmp/releases.json')).flat().filter(r=>r.tag_name===tag);
           if(releases.length>1)throw Error('Multiple releases use this tag; resolve duplicates first');
           if(releases[0]&&!releases[0].draft)throw Error('Version already published; refusing to overwrite');
@@ -135,4 +157,8 @@ jobs:
           for(const file of expected){const asset=remote.assets.find(a=>a.name===file.name);if(!asset||asset.size!==file.size||asset.digest!==file.digest)throw Error('Asset verification failed: '+file.name)}
           console.log('All five release assets match local size and SHA256');
           NODE
-          gh api --method PATCH "repos/$GITHUB_REPOSITORY/releases/$release_id" -F draft=false -f make_latest=true --jq .html_url
+          if [ "$PUBLISH_RELEASE" = "true" ]; then
+            gh api --method PATCH "repos/$GITHUB_REPOSITORY/releases/$release_id" -F draft=false -f make_latest=true --jq .html_url
+          else
+            echo "Verified preview draft ID: $release_id (not published)"
+          fi

@@ -62,7 +62,7 @@
         <button class="tb" data-cmd="cmd:exportHtml" title="导出 HTML (Ctrl+Shift+E)"><svg><use href="#i-export"/></svg></button>
       </div>
 
-      <span class="tb-title" id="fileName">未命名.md</span>
+      <span class="tb-title" id="fileName" title="双击重命名" role="button" tabindex="0" aria-label="重命名当前文档">未命名.md</span>
 
       <!-- 第一行右侧留空（Windows 的原生窗口按钮在这里，需要避让） -->
       <div class="tb-right"></div>
@@ -143,6 +143,7 @@
         <button class="sb-act" id="sbOpen" title="打开 (Ctrl+O)">
           <svg viewBox="0 0 24 24"><use href="#i-folder-open"/></svg><span>打开文件</span>
         </button>
+        <button class="sb-act" id="sbClosedHistory" title="最近关闭的文件 · Ctrl/Cmd+Shift+T 重新打开上一个"><svg viewBox="0 0 24 24"><use href="#i-folder-open"/></svg><span>最近关闭</span></button>
         <button class="sb-act" id="sbCloseAll" title="关闭全部">
           <svg viewBox="0 0 24 24"><use href="#i-x"/></svg><span>关闭全部</span>
         </button>
