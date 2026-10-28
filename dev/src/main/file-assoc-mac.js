@@ -1,4 +1,5 @@
-const path = require('path');
+// Launch Services paths are always POSIX, including cross-platform test fixtures.
+const path = require('path').posix;
 const { execFile } = require('child_process');
 const { promisify } = require('util');
 const run = promisify(execFile);

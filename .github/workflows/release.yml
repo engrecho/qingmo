@@ -37,7 +37,12 @@ jobs:
           cache: npm
           cache-dependency-path: dev/package-lock.json
       - run: npm ci
-      - run: npm run build:renderer && npm run check:bundle && npm run test:startup && npm run test:auto-update && npm run test:mac-assoc && npm run test:core && npm run test:live-edit
+      - name: Build and core regressions
+        run: |
+          set -euo pipefail
+          exec > >(tee /tmp/qingmo-core.log) 2>&1
+          trap 'echo "::error::$(tail -n 40 /tmp/qingmo-core.log | tr "\n" " " )"' ERR
+          npm run build:renderer && npm run check:bundle && npm run test:startup && npm run test:auto-update && npm run test:mac-assoc && npm run test:core && npm run test:live-edit
       - name: Document interaction regressions
         timeout-minutes: 5
         run: |
