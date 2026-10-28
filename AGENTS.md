@@ -16,3 +16,6 @@
 
 14. 文档 dirty 必须比较正文与 savedContent，加载/切换不算编辑；每标签独立 EditorState 与撤销历史。延迟侧栏任务只能渲染，不能重标 dirty。空白新文档免关闭确认，已有文件清空仍需确认。回归 test:documents。
 15. 后台关闭只隐藏主窗口；Cmd+Q / 真正退出必须走关闭全部握手，列出所有未保存文件，取消或失败保留文档。最近关闭只记录路径、不保存已放弃编辑；重命名不覆盖同名文件，也不隐式保存正文。
+
+16. Electron 33 的 net.fetch 在 manual 重定向遇 302 会抛 Redirect was cancelled；更新下载和备用检查必须用 update-fetch.js 的 net.request 适配，逐跳验证地址，保留大小与 SHA256 校验。回归 test:update-network / test:update-flow 用真实 Electron HTTP 跳转，父进程退出后清理 profile 并检查完成证明。
+17. Mac 文件关联使用 file-assoc-mac.js 和原生 Launch Services 助手，绝不调用 reg.exe。beforePack 在 Mac 编译通用助手，随包分发并签名；UTI 与七种扩展名一致。只在用户点击修复时设置默认应用；测试 test:mac-assoc 和隔离 Mac runner 的 verify-mac-assoc-native.js。

@@ -1,6 +1,6 @@
 {
   "name": "qingmo",
-  "version": "1.6.9",
+  "version": "1.6.10",
   "description": "轻墨 QingMo — 简洁轻量的跨平台 Markdown 编辑器",
   "main": "src/main/main.js",
   "author": "王君龙",
@@ -31,7 +31,7 @@
     "gen:logo": "electron scripts/gen-logo-icons.js",
     "check:bundle": "node scripts/check-bundle-fresh.js",
     "test:edit": "electron scripts/verify-edit.js",
-    "test:all": "npm run test:startup && npm run test:auto-update && npm run test:update-flow && npm run test:images && npm run test:lists && npm run test:core && npm run test:live-edit && npm run test:dom && npm run test:edit && npm run test:keys && npm run test:ime && npm run test:real-input && npm run test:toggle && npm run test:shortcuts && npm run test:log-loop && npm run test:log && npm run test:update && npm run test:update-fallback && npm run test:ui-changes && npm run test:close && npm run test:outline && npm run test:pdf && npm run test:documents",
+    "test:all": "npm run test:startup && npm run test:auto-update && npm run test:update-flow && npm run test:images && npm run test:lists && npm run test:core && npm run test:live-edit && npm run test:dom && npm run test:edit && npm run test:keys && npm run test:ime && npm run test:real-input && npm run test:toggle && npm run test:shortcuts && npm run test:log-loop && npm run test:log && npm run test:update && npm run test:update-fallback && npm run test:ui-changes && npm run test:close && npm run test:outline && npm run test:pdf && npm run test:documents && npm run test:update-network && npm run test:mac-assoc",
     "verify:mac": "node scripts/verify-mac.js",
     "test:core": "node scripts/test-editor-core.js",
     "test:keys": "electron scripts/verify-keys.js",
@@ -49,13 +49,16 @@
     "test:ui-changes": "electron scripts/verify-ui-changes.js",
     "test:shortcuts": "electron scripts/verify-shortcuts.js",
     "test:startup": "node scripts/test-startup.js",
-    "test:update-flow": "electron scripts/verify-update-flow.js",
+    "test:update-flow": "node scripts/test-update-electron.js verify-update-flow.js",
     "test:images": "electron scripts/verify-local-images.js",
     "test:lists": "electron scripts/verify-list-edit.js",
     "test:close": "node scripts/test-close-dialog.js && electron scripts/verify-close.js",
     "test:outline": "electron scripts/verify-outline.js",
     "test:pdf": "electron scripts/verify-pdf.js",
-    "test:documents": "node scripts/test-documents.js"
+    "test:documents": "node scripts/test-documents.js",
+    "build:mac-assoc": "node scripts/mac/build-file-assoc.js",
+    "test:update-network": "node scripts/test-update-electron.js verify-update-network.js",
+    "test:mac-assoc": "node --test scripts/test-mac-file-assoc.js"
   },
   "devDependencies": {
     "electron": "^33.0.0",
@@ -130,26 +133,54 @@
       "extendInfo": {
         "CFBundleDisplayName": "轻墨",
         "CFBundleName": "轻墨",
-        "NSHumanReadableCopyright": "MIT License"
+        "NSHumanReadableCopyright": "MIT License",
+        "UTImportedTypeDeclarations": [
+          {
+            "UTTypeIdentifier": "net.daringfireball.markdown",
+            "UTTypeDescription": "Markdown document",
+            "UTTypeConformsTo": [
+              "public.plain-text"
+            ],
+            "UTTypeTagSpecification": {
+              "public.filename-extension": [
+                "md",
+                "markdown",
+                "mdown",
+                "mkd",
+                "mkdn",
+                "mdtxt",
+                "mdtext"
+              ],
+              "public.mime-type": "text/markdown"
+            }
+          }
+        ],
+        "CFBundleDocumentTypes": [
+          {
+            "CFBundleTypeName": "Markdown",
+            "CFBundleTypeExtensions": [
+              "md",
+              "markdown",
+              "mdown",
+              "mkd",
+              "mkdn",
+              "mdtxt",
+              "mdtext"
+            ],
+            "CFBundleTypeRole": "Editor",
+            "LSHandlerRank": "Alternate",
+            "CFBundleTypeIconFile": "icon.icns",
+            "LSItemContentTypes": [
+              "net.daringfireball.markdown"
+            ]
+          }
+        ]
       },
       "artifactName": "${productName}-${version}-mac-${arch}.${ext}",
-      "fileAssociations": [
+      "extraResources": [
         {
-          "ext": [
-            "md",
-            "markdown",
-            "mdown",
-            "mkd",
-            "mkdn",
-            "mdtxt",
-            "mdtext"
-          ],
-          "name": "Markdown",
-          "description": "Markdown 文档",
-          "mimeType": "text/markdown",
-          "role": "Editor",
-          "rank": "Owner",
-          "isPackage": false
+          "from": "build/mac/file-assoc",
+          "to": "mac/file-assoc"
         }
       ]
     },
@@ -183,7 +214,8 @@
     ],
     "portable": {
       "artifactName": "QingMo-${version}-win-portable.${ext}"
-    }
+    },
+    "beforePack": "./scripts/mac/before-pack.js"
   },
   "productName": "轻墨"
 }

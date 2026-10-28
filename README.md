@@ -18,7 +18,7 @@
 
 <p align="center"><sub>轻一点，专心写。上方为用户提供视频转制的视觉动画；下方功能演示录自真实应用。</sub></p>
 
-> 当前版本：**1.6.9** · [下载与版本说明](https://github.com/engrecho/qingmo/releases/tag/v1.6.9)。支持文件重命名、最近关闭历史及后台保留设置；功能 GIF 来自真实应用界面。
+> 当前版本：**1.6.10** · [下载与版本说明](https://github.com/engrecho/qingmo/releases/tag/v1.6.10)。修复自动更新下载与 macOS 文件关联；功能 GIF 来自真实应用界面。
 
 ## 实时预览，专注写作
 
@@ -169,7 +169,7 @@ macOS 使用 **Cmd**，Windows 使用 **Ctrl**。
 <details>
 <summary><strong>设为默认编辑器后，为什么文件图标还没变化？</strong></summary>
 
-默认打开方式、文件图标和文档缩略图由系统分别管理。Mac 可在 Finder“显示简介 → 打开方式”中选择轻墨并点“全部更改”；Windows 优先使用安装版，并在轻墨设置中修复文件关联。便携版移动后可能需要重新关联，系统图标缓存也可能延迟更新。
+默认打开方式、文件图标和文档缩略图由系统分别管理。Mac 可在 Finder“显示简介 → 打开方式”中选择轻墨并点“全部更改”；Mac 和 Windows 均可在轻墨设置中修复文件关联；Mac 请先安装到 Applications。Windows 优先使用安装版。便携版移动后可能需要重新关联，系统图标缓存也可能延迟更新。
 
 </details>
 
@@ -199,3 +199,5 @@ npm --prefix dev start
   <img src="docs/assets/support-qr.png" width="230" alt="作者提供的自愿打赏二维码" /><br />
   <sub>扫码前请在支付平台确认收款对象。打赏不兑换付费权益。</sub>
 </p>
+
+> 更新提示：1.6.9 及更早版本的下载器遇到 GitHub 重定向可能报错，请先从 [v1.6.10 发布页](https://github.com/engrecho/qingmo/releases/tag/v1.6.10) 手动下载安装一次；新版本已修复该问题。

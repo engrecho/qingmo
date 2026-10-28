@@ -37,13 +37,15 @@ jobs:
           cache: npm
           cache-dependency-path: dev/package-lock.json
       - run: npm ci
-      - run: npm run build:renderer && npm run check:bundle && npm run test:startup && npm run test:core && npm run test:live-edit
+      - run: npm run build:renderer && npm run check:bundle && npm run test:startup && npm run test:auto-update && npm run test:mac-assoc && npm run test:core && npm run test:live-edit
       - name: Document interaction regressions
         timeout-minutes: 5
         run: |
           set -euo pipefail
           exec > >(tee /tmp/qingmo-interactions.log) 2>&1
           trap 'echo "::error::$(tail -n 35 /tmp/qingmo-interactions.log | tr "\n" " " )"' ERR
+          npm run test:update-network -- --no-sandbox --disable-gpu
+          npm run test:update-flow -- --no-sandbox --disable-gpu
           echo "::notice::Running list regression"
           npm run test:lists -- --no-sandbox --disable-gpu
           echo "::notice::Running close regression"
@@ -62,6 +64,7 @@ jobs:
           npx electron-builder --mac --arm64 --dir --publish never
           codesign --force --deep --sign - ../dist/mac-arm64/轻墨.app
           codesign --verify --deep --strict ../dist/mac-arm64/轻墨.app
+          node scripts/verify-mac-assoc-native.js ../dist/mac-arm64/轻墨.app
           npx electron-builder --mac --arm64 --prepackaged ../dist/mac-arm64/轻墨.app --publish never
           node scripts/verify-asar.js ../dist/mac-arm64/轻墨.app/Contents/Resources/app.asar
           node scripts/publish.js mac

@@ -1,3 +1,12 @@
+## v1.6.10
+
+- 修复自动更新下载报 `Redirect was cancelled`：Electron 33 的 net.fetch 不支持预期的手动重定向，改用 net.request 逐跳读取 Location；保留官方来源限制、超时、大小与 SHA256 校验。
+- 同步修复 GitHub API 限流时的备用版本检查。
+- 补齐 macOS「修复文件关联」：使用原生 Launch Services 查询及设置默认应用，不再调用 Windows 注册表；覆盖七种 Markdown 扩展名。
+- Mac 安装包声明 Markdown UTI，并包含通用原生关联助手；设置和修复提示按平台显示。请先将轻墨安装到 Applications。
+- 新增真实 Electron 302/307 下载、非法跳转、取消与完整更新 UI 回归，以及 Mac 原生关联注册检查。
+- 旧版更新器无法自行修复，请先手动下载安装本版。Mac 为 Apple 芯片版本，仍仅本地签名，尚未完成 Apple 公证。
+
 ## v1.6.9
 
 - 修复打开、切换文档被误判为编辑，以及延迟侧栏刷新把已保存文档重新标为未保存的问题。

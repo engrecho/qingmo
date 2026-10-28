@@ -97,6 +97,8 @@ if (fs.existsSync(plistPath)) {
   check('CFBundleIconFile = icon.icns', get('CFBundleIconFile') === 'icon.icns', '实际: ' + get('CFBundleIconFile'));
   const documentIcon = get('CFBundleTypeIconFile');
   check('Markdown 文档图标为有效 ICNS', !!documentIcon && documentIcon.endsWith('.icns') && fs.existsSync(path.join(CONTENTS, 'Resources', documentIcon)), '实际: ' + documentIcon);
+  check('Markdown UTI 已声明', plist.includes('<string>net.daringfireball.markdown</string>') && plist.includes('<key>LSItemContentTypes</key>') && plist.includes('<key>UTImportedTypeDeclarations</key>'));
+  check('macOS 文件关联原生助手存在', fs.existsSync(path.join(CONTENTS, 'Resources/mac/file-assoc')));
   const ver = get('CFBundleShortVersionString');
   check('CFBundleShortVersionString 有值', !!ver && /^\d+\.\d+\.\d+$/.test(ver), '实际: ' + ver);
 } else {

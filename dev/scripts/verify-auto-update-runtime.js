@@ -17,7 +17,7 @@ app.whenReady().then(async () => {
   const updater = createAutoUpdater({
     app,
     checkRelease: async () => ({ ok: true, current: app.getVersion(), latest: app.getVersion(), hasUpdate: false }),
-    fetch: (...args) => require('electron').net.fetch(...args),
+    fetch: (...args) => require('../src/main/update-fetch').updateFetch(require('electron').net, ...args),
     openInstaller: () => { throw new Error('检查测试不得启动安装程序'); }
   });
   try {

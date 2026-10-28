@@ -4,12 +4,13 @@ const fs = require('fs');
 // 平台差异统一走这一层（mac.js / win.js），本文件不再出现 process.platform 分支
 const platform = require('./platform');
 const logger = require('./logger');
-const fileAssoc = require('./file-assoc');
+const fileAssoc = require(process.platform === 'darwin' ? './file-assoc-mac' : './file-assoc');
+const { updateFetch } = require('./update-fetch');
 const localImages = require('./local-images');
 const autoUpdate = require('./auto-update').createAutoUpdater({
   app,
   checkRelease,
-  fetch: (...args) => net.fetch(...args),
+  fetch: (...args) => updateFetch(net, ...args),
   openInstaller: file => platform.openUpdateInstaller(shell, file),
   onState: state => {
     for (const window of BrowserWindow.getAllWindows()) {
@@ -384,14 +385,14 @@ async function repairFileAssoc() {
       type: r.ok ? 'info' : 'warning',
       title: '修复文件关联',
       message: r.ok ? '文件关联已修复' : '部分关联修复失败',
-      detail: [
-        r.ok ? '现在双击 .md 文件会用轻墨打开。' : '有部分扩展名没能写入注册表。',
-        '',
+      detail: process.platform === 'darwin' ? [
+        r.ok ? 'Markdown 扩展名已注册为由轻墨打开。' : '部分扩展名未能设为默认打开方式。',
         '.md 当前关联：' + (md ? md.progid : '(未知)'),
-        '打开命令：' + (md ? md.command : '(未知)'),
-        '',
-        '提示：Windows 可能会缓存关联，修复后如果仍不生效，',
-        '可在「设置 → 应用 → 默认应用」里重新指定。'
+        '如 Finder 仍使用其他应用：选中 .md → 显示简介 → 打开方式 → 轻墨 → 全部更改。'
+      ].join('\n') : [
+        r.ok ? '现在双击 .md 文件会用轻墨打开。' : '有部分扩展名没能写入注册表。',
+        '.md 当前关联：' + (md ? md.progid : '(未知)'),
+        '提示：若 Windows 仍使用其他应用，请在「设置 → 应用 → 默认应用」指定轻墨。'
       ].join('\n'),
       buttons: ['好']
     });
@@ -402,7 +403,7 @@ async function repairFileAssoc() {
 
 /** 查询关联状态（给渲染层用） */
 ipcMain.handle('app:checkFileAssoc', async () => {
-  if (process.platform !== 'win32') return { supported: false, list: [] };
+  if (!['win32', 'darwin'].includes(process.platform)) return { supported: false, list: [] };
   const list = await fileAssoc.check();
   return { supported: true, list };
 });
@@ -534,7 +535,7 @@ async function checkUpdateFallback(current) {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 8000);
   try {
-    const res = await net.fetch(UPDATE_REDIRECT, {
+    const res = await updateFetch(net, UPDATE_REDIRECT, {
       redirect: 'manual',      // 不自动跟随，从 Location 头里读 tag
       signal: ctrl.signal,
       headers: { 'User-Agent': 'QingMo-Update-Check' }

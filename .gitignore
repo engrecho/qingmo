@@ -63,3 +63,6 @@ _to_delete/
 # electron-updater 开发模式的更新配置（每次打包后要重生成，不入库）
 dev/dev-app-update.yml
 dev/scripts/dev-app-update.yml
+
+# Compiled native Launch Services helper
+dev/build/mac/
