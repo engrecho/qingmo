@@ -18,7 +18,7 @@
 
 <p align="center"><sub>轻一点，专心写。上方为用户提供视频转制的视觉动画；下方功能演示录自真实应用。</sub></p>
 
-> 当前源码：**1.6.9（未发布）** · [当前安装版 1.6.8](https://github.com/engrecho/qingmo/releases/tag/v1.6.8)。下述新文件管理与后台设置需新版安装包；功能 GIF 来自真实应用界面。
+> 当前版本：**1.6.9** · [下载与版本说明](https://github.com/engrecho/qingmo/releases/tag/v1.6.9)。支持文件重命名、最近关闭历史及后台保留设置；功能 GIF 来自真实应用界面。
 
 ## 实时预览，专注写作
 

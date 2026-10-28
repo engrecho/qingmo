@@ -1,4 +1,4 @@
-## v1.6.9（未发布）
+## v1.6.9
 
 - 修复打开、切换文档被误判为编辑，以及延迟侧栏刷新把已保存文档重新标为未保存的问题。
 - 每个文档独立保存编辑器状态、撤销历史与已保存内容基线，撤销回基线自动清除标记；侧栏未保存圆点独立显示。
@@ -8,7 +8,9 @@
 - 关闭全部与二次放弃提示列出具体未保存文件名及路径。
 - 最近关闭记录保留 20 个文件路径，支持列表选择与 Ctrl/Cmd+Shift+T，跨重启保留；重新打开读取磁盘，不恢复明确放弃的修改。
 - 新增 `test:documents` 覆盖文件状态、重命名、历史、后台关闭与退出检查。
-- Mac / Windows 原生回归和构建已通过：[CI 40543434697](https://github.com/engrecho/qingmo/actions/runs/40543434697)。测试包位于 release/macos/preview-1.6.9 和 release/windows/preview-1.6.9，五个文件均通过大小、SHA256 校验。正式版仍为 1.6.8。
+- 已发布：[GitHub Release](https://github.com/engrecho/qingmo/releases/tag/v1.6.9)。PR #2 已合入 main；发布源码标签为 `82a24f9`，与合入后的应用源码一致。
+- Mac / Windows 原生回归和构建通过：[CI 40543434697](https://github.com/engrecho/qingmo/actions/runs/40543434697)。已校验的同一批安装包转为正式发布；五个文件均通过大小、SHA256 及更新清单 SHA512 校验，本地位于 release/macos 和 release/windows。
+- Mac 包为 Apple 芯片版本，仅本地签名，尚未进行 Apple 公证。
 
 ## v1.6.8
 
